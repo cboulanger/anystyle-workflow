@@ -1,0 +1,5 @@
+require './lib/datasource/corpus'
+require './lib/datasource/crossref'
+#require './lib/datasource/neo4j'
+require './lib/datasource/lobid'
+require './lib/datasource/openlibrary'

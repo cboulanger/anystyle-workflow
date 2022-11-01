@@ -1,0 +1,121 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    activegraph (11.1.0.alpha.4)
+      activemodel (>= 4.0)
+      activesupport (>= 4.0)
+      i18n (!= 1.8.8)
+      neo4j-ruby-driver (>= 4.4.0.alpha.7)
+      orm_adapter (~> 0.5.0)
+      sorted_set
+    activemodel (7.0.4)
+      activesupport (= 7.0.4)
+    activesupport (7.0.4)
+      concurrent-ruby (~> 1.0, >= 1.0.2)
+      i18n (>= 1.6, < 2)
+      minitest (>= 5.1)
+      tzinfo (~> 2.0)
+    anystyle (1.3.14)
+      anystyle-data (~> 1.2)
+      bibtex-ruby (~> 6.0)
+      namae (~> 1.0)
+      wapiti (~> 2.0)
+    anystyle-data (1.2.0)
+    ast (2.4.2)
+    async (2.2.1)
+      console (~> 1.10)
+      io-event (~> 1.1.0)
+      timers (~> 4.1)
+    async-io (1.34.0)
+      async
+    bibtex-ruby (6.0.0)
+      latex-decode (~> 0.0)
+    builder (3.2.4)
+    concurrent-ruby (1.1.10)
+    connection_pool (2.3.0)
+    console (1.16.2)
+      fiber-local
+    dotenv (2.8.1)
+    faraday (2.6.0)
+      faraday-net_http (>= 2.0, < 3.1)
+      ruby2_keywords (>= 0.0.4)
+    faraday-follow_redirects (0.1.0)
+      faraday (>= 2, < 3)
+    faraday-net_http (3.0.1)
+    fiber-local (1.0.0)
+    http-2-next (0.5.0)
+    httpx (0.21.1)
+      http-2-next (>= 0.4.1)
+    i18n (1.12.0)
+      concurrent-ruby (~> 1.0)
+    io-event (1.1.2)
+    json (2.6.2)
+    latex-decode (0.4.0)
+    minitest (5.16.3)
+    multi_json (1.15.0)
+    namae (1.1.1)
+    neo4j-ruby-driver (4.4.0.beta.1)
+      activesupport
+      async-io
+      connection_pool
+      zeitwerk (>= 2.1.10)
+    orm_adapter (0.5.0)
+    parallel (1.22.1)
+    parser (3.1.2.1)
+      ast (~> 2.4.1)
+    rainbow (3.1.1)
+    rbtree (0.4.5)
+    regexp_parser (2.6.0)
+    rexml (3.2.5)
+    rubocop (1.38.0)
+      json (~> 2.3)
+      parallel (~> 1.10)
+      parser (>= 3.1.2.1)
+      rainbow (>= 2.2.2, < 4.0)
+      regexp_parser (>= 1.8, < 3.0)
+      rexml (>= 3.2.5, < 4.0)
+      rubocop-ast (>= 1.23.0, < 2.0)
+      ruby-progressbar (~> 1.7)
+      unicode-display_width (>= 1.4.0, < 3.0)
+    rubocop-ast (1.23.0)
+      parser (>= 3.1.1.0)
+    ruby-progressbar (1.11.0)
+    ruby2_keywords (0.0.5)
+    serrano (1.4)
+      faraday (~> 2.2)
+      faraday-follow_redirects (~> 0.1.0)
+      multi_json (~> 1.15)
+      rexml (~> 3.2, >= 3.2.5)
+      thor (~> 1.2, >= 1.2.1)
+    set (1.0.3)
+    sorted_set (1.0.3)
+      rbtree
+      set (~> 1.0)
+    thor (1.2.1)
+    timers (4.3.5)
+    tzinfo (2.0.5)
+      concurrent-ruby (~> 1.0)
+    unicode-display_width (2.3.0)
+    wapiti (2.0.0)
+      builder (~> 3.2)
+      rexml (~> 3.0)
+    zeitwerk (2.6.3)
+
+PLATFORMS
+  x86_64-linux
+
+DEPENDENCIES
+  activegraph (~> 11.1.0.alpha.3)
+  anystyle
+  dotenv (~> 2.1, >= 2.1.1)
+  httpx
+  neo4j-ruby-driver (~> 4.4.0.alpha.6)
+  rubocop
+  ruby-progressbar (~> 1.11)
+  serrano
+
+RUBY VERSION
+   ruby 3.1.2p20
+
+BUNDLED WITH
+   2.3.20
