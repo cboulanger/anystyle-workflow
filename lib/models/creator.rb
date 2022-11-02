@@ -28,4 +28,4 @@
     end
   end
 #end
-ActiveGraph::Base.query('CREATE CONSTRAINT IF NOT EXISTS ON (cr:Creator) ASSERT cr.uuid IS UNIQUE')
+

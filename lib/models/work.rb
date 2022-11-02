@@ -14,6 +14,10 @@ class Work
   has_many :out, :citations, model_class: :Work, rel_class: :Citation
   has_one :out, :container, model_class: [:Journal, :EditedBook], rel_class: :ContainedIn
 
+  def initialize(args = nil)
+    super(args)
+  end
+
   def get_display_name
     name_ = first_creator_name
     display_name_ = name_.nil? ? '' : "#{name_}, "
@@ -48,9 +52,4 @@ class Journal
 
 end
 
-#end
-
-ActiveGraph::Base.query('CREATE CONSTRAINT IF NOT EXISTS ON (w:Work) ASSERT w.uuid IS UNIQUE')
-ActiveGraph::Base.query('CREATE CONSTRAINT IF NOT EXISTS ON (c:EditedBook) ASSERT c.uuid IS UNIQUE')
-ActiveGraph::Base.query('CREATE CONSTRAINT IF NOT EXISTS ON (c:Journal) ASSERT c.uuid IS UNIQUE')
 

@@ -2,7 +2,6 @@ require 'active_graph'
 require './lib/models/work'
 require './lib/models/creator'
 
-#module Relation
 
 class CreatorOf
   include ActiveGraph::Relationship
