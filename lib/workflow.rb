@@ -68,7 +68,7 @@ class Workflow
     end
 
     def match_references
-      files = Dir.glob(refs_glob ).map(&:untaint)
+      files = Dir.glob(refs_glob).map(&:untaint)
       progressbar = ProgressBar.create(title: 'Matching references:',
                                        total: files.length,
                                        **progress_defaults)
@@ -89,7 +89,6 @@ class Workflow
       end
     end
 
-
     def export_citing_items
       files = Dir.glob(refs_glob).map(&:untaint)
       progressbar = ProgressBar.create(title: 'Fetching metadata for citing items:',
@@ -101,16 +100,16 @@ class Workflow
                else
                  {}
                end
-      counter = 0
+
       files.each do |file_path|
         progressbar.increment
         file_name = File.basename(file_path, '.json')
         next unless result[file_name].nil?
-
-        counter += 1
-        next if counter > 5
-
-        result[file_name] = Datasource::Utils.get_metadata_from_filename(file_name)
+        begin
+          result[file_name] = Datasource::Utils.get_metadata_from_filename(file_name)
+        rescue StandardError => e
+          puts "Encountered exception: #{e.inspect}, skipping #{file_name}..."
+        end
       end
 
       text = JSON.pretty_generate(result)
@@ -119,12 +118,12 @@ class Workflow
 
     def export_to_wos
       files = Dir.glob(refs_glob).map(&:untaint)
-      progressbar = ProgressBar.create(title: 'Matching references:',
+      progressbar = ProgressBar.create(title: 'Exporting to WOS file:',
                                        total: files.length,
                                        **progress_defaults)
       export_citing_items unless File.exist? metadata_file_path
       metadata = JSON.load_file(metadata_file_path)
-      Export::Wos.create_file(wosexport_file_path)
+      Export::Wos.write_header(wosexport_file_path)
       files.each do |file_path|
         progressbar.increment
         file_name = File.basename(file_path, '.json')
