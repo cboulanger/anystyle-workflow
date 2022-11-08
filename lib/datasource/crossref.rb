@@ -40,8 +40,8 @@ module Datasource
               end
         items.map do |item|
           %w[ license indexed reference-count content-domain created source is-referenced-by-count prefix member
-              original-title link deposited score resource subtitle short-title references-count subject relation
-              journal-issue alternative-id container-title-short published ISSN published-print
+              original-title link deposited score resource subtitle short-title subject relation
+              journal-issue alternative-id container-title-short published published-print
           ].each { |key| item.delete(key) }
 
           item

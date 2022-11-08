@@ -33,20 +33,18 @@ module Export
       def to_au(creator_field)
         return 'NO AUTHOR' unless creator_field.is_a? Array
 
-        creator_field.map do |c|
-          c['literal'] || "#{c['family'] || 'UNKNOWN'}, #{first_name_initials(c)}"
-        end.join("\n   ")
+        creator_field.map { |c| c['literal'] || "#{c['family'] || 'UNKNOWN'}, #{first_name_initials(c)}" }
       end
 
       def to_af(creator_field)
         return 'NO AUTHOR' unless creator_field.is_a? Array
 
-        creator_field.map { |c| c['literal'] || "#{c['family']}, #{c['given']}" }.join("\n   ")
+        creator_field.map { |c| c['literal'] || "#{c['family'] || 'UNKNOWN'}, #{c['given']}" }
       end
 
       def to_cr_au(creator_field)
         c = creator_field.first
-        c['literal'] || "#{c['family']} #{first_name_initials(c)}"
+        c['literal'] || "#{c['family'] || 'UNKNOWN'} #{first_name_initials(c)}"
       end
 
       def to_dt(csl_type)
@@ -131,25 +129,43 @@ module Export
       # convert a CSL-JSON datastructure as a WOS/RIS text record
       def create_record(item, cited_records = [])
         fields = {
-          "PT": to_pt(item['type']),
-          "DT": to_dt(item['type']),
-          "AU": to_au(item['author'] || item['editor']),
           "AF": to_af(item['author'] || item['editor']),
-          "TI": item['title'],
-          "SO": item['container-title'],
-          "PD": to_pd(item['issued']),
-          "PY": to_py(item['issued']),
-          "VL": item['volume'],
-          "IS": item['issue'],
-          "BP": item['page']&.scan(/\d+/)&.first,
-          "EP": item['page']&.scan(/\d+/)&.last,
-          "DI": item['DOI'],
+          "AB": item['abstract'],
+          "AU": to_au(item['author'] || item['editor']),
           "BN": item['ISBN'],
-          "CR": cited_records.map { |cr| create_cr_entry(cr) }.join("\n   "),
-          "NR": cited_records.length
+          "BP": item['page']&.scan(/\d+/)&.first,
+          "C1": 'N/A',
+          "CR": cited_records.map { |cr| create_cr_entry(cr) },
+          "DE": 'N/A',
+          "DI": item['DOI'],
+          "DT": to_dt(item['type']),
+          "EP": item['page']&.scan(/\d+/)&.last,
+          "IS": item['issue'],
+          "NR": cited_records.length,
+          "PD": to_pd(item['issued']),
+          "PT": to_pt(item['type']),
+          "PY": to_py(item['issued']),
+          "RP": 'N/A',
+          "SN": item['ISSN']&.join(" "),
+          "SO": item['container-title'],
+          "TC": item['references-count'],
+          "TI": item['title'],
+          "VL": item['volume'],
         }
-        # fields.compact
+        # cleanup
         fields.delete_if { |_k, v| v.nil? || v.to_s.empty? }
+        remove_re = /\n|<[^>\s]+>/
+        fields.each do |k, v|
+          fields[k] = case v
+                      when String
+                        v.gsub(remove_re, '')
+                      when Array
+                        # put array items on new lines
+                        v.map { |i| i.gsub(remove_re, '') }.join("\n   ")
+                      else
+                        v.to_s
+                      end
+        end
       end
     end
   end
