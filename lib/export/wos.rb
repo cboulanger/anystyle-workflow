@@ -62,7 +62,7 @@ module Export
 
       def to_pt(csl_type)
         case csl_type
-        when 'article'
+        when 'journal-article'
           'J'
         when 'book'
           'B'
@@ -126,6 +126,10 @@ module Export
         cit.join(', ')
       end
 
+      def create_unique_identifier(item)
+        item['DOI'] || item['ISBN'].scan(/\d+/)&.first || "#{to_cr_au(item['author'] || item['editor'])} #{to_pd(item['date'])}"
+      end
+
       # convert a CSL-JSON datastructure as a WOS/RIS text record
       def create_record(item, cited_records = [])
         fields = {
@@ -141,6 +145,9 @@ module Export
           "DT": to_dt(item['type']),
           "EP": item['page']&.scan(/\d+/)&.last,
           "IS": item['issue'],
+          "J9": if item['type']== "journal-article"
+                  item['container-title']
+                end,
           "NR": cited_records.length,
           "PD": to_pd(item['issued']),
           "PT": to_pt(item['type']),
@@ -151,6 +158,7 @@ module Export
           "TC": item['references-count'],
           "TI": item['title'],
           "VL": item['volume'],
+          "UT": create_unique_identifier(item)
         }
         # cleanup
         fields.delete_if { |_k, v| v.nil? || v.to_s.empty? }

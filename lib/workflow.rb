@@ -7,18 +7,12 @@ require 'csv'
 
 class Workflow
   class << self
-
-
     def progress_defaults
       {
         format: "%t %b\u{15E7}%i %p%% %c/%C %a %e",
         progress_mark: ' ',
         remainder_mark: "\u{FF65}"
       }
-    end
-
-    def pdf_glob
-      File.join('data', '1-pdf', '*.pdf')
     end
 
     def text_glob
@@ -33,13 +27,9 @@ class Workflow
       File.join('data', '0-metadata')
     end
 
-    def wosexport_file_path
-      File.join('data', '5-export', 'wos-export.txt')
-    end
-
     def create_gold_csl
       anystyle = Datamining::AnyStyle.new('./models/finder.mod', './models/parser.mod')
-      files = Dir.glob("data/0-gold/*.xml").map(&:untaint)
+      files = Dir.glob('data/0-gold/*.xml').map(&:untaint)
       files.each do |file_path|
         file_name = File.basename file_path, '.xml'
         xml = File.read file_path
@@ -48,10 +38,52 @@ class Workflow
       end
     end
 
+    def fetch_metadata
+      # load cached metadata
+      datasources = %w[crossref dimensions]
+      cache = {}
+      datasources.each do |ds|
+        file_path = "data/0-metadata/#{ds}.json"
+        cache[ds] = if File.exist? file_path
+                      JSON.load_file(file_path)
+                    else
+                      {}
+                    end
+      end
 
-    def extract_text_from_pdf
+      # iterate over all files and retrieve missing metadata
+      files = Dir.glob(refs_glob).map(&:untaint)
+      progressbar = ProgressBar.create(title: 'Fetching missing metadata for citing items:',
+                                       total: files.length,
+                                       **progress_defaults)
+      files.each do |file_path|
+        progressbar.increment
+        file_name = File.basename(file_path, '.json')
+        datasources.each do |ds|
+          next if cache[ds][file_name]
+
+          doi = file_name.sub(/_/, '/') # relies on file names being DOIs
+          begin
+            meta = Datasource::Utils.fetch_metadata_by_identifier doi, datasources: [ds]
+            cache[ds][file_name] = meta.first unless meta.empty?
+          rescue StandardError => e
+            $logger.error "While querying #{ds} for #{doi}, encountered exception: #{e.inspect}"
+          end
+        end
+      end
+
+      # write cache files to disk
+      datasources.each do |ds|
+        metadata_path = "data/0-metadata/#{ds}.json"
+        json = JSON.pretty_generate(cache[ds])
+        File.write(metadata_path, json)
+      end
+    end
+
+    def extract_text_from_pdf(source_dir, overwrite: true)
       anystyle = Datamining::AnyStyle.new('./models/finder.mod', './models/parser.mod')
-      files = Dir.glob(pdf_glob).map(&:untaint)
+      source_dir ||= 'data/1-pdf'
+      files = Dir.glob("#{source_dir}/*.pdf").map(&:untaint)
       progressbar = ProgressBar.create(title: 'Extracting text from PDF:',
                                        total: files.length,
                                        **progress_defaults)
@@ -59,7 +91,7 @@ class Workflow
         file_name = File.basename(file_path, '.pdf')
         outfile = File.join('data', '2-txt', "#{file_name}.txt")
         progressbar.increment
-        next if File.exist? outfile
+        next if !overwrite && File.exist?(outfile)
 
         text = anystyle.extract_text(file_path)
         File.write(outfile, text)
@@ -87,31 +119,52 @@ class Workflow
     def timestamp
       DateTime.now.strftime('%Y-%m-%d_%H-%M-%S')
     end
+
     def extraction_stats
       files = Dir.glob(refs_glob).map(&:untaint)
       progressbar = ProgressBar.create(title: 'Collecting extraction statistics:',
                                        total: files.length,
                                        **progress_defaults)
       outfile = File.join('data', '5-export', "extraction-stats-#{timestamp}.csv")
-      stats = [['File', 'Rejected', 'All', 'Valid', 'Gold']]
+      stats = []
+      columns = %w[file rejected all valid gold]
+
+      # vendor data
+      vendors = %w[crossref dimensions]
+      columns += vendors
+      vendor_cache = {}
+      vendors.each do |vendor|
+        vendor_path = "data/0-metadata/#{vendor}.json"
+        vendor_cache[vendor] = (JSON.load_file vendor_path if File.exist? vendor_path)
+      end
+      stats.append columns
       files.each do |file_path|
         progressbar.increment
-        all = JSON.load_file(file_path)
-        file_name = File.basename(file_path, ".json")
-        rejected_file_path = "data/3-csl-rejected/#{file_name}.json"
-        rejected = if File.exist? rejected_file_path
-                     JSON.load_file(rejected_file_path)
-                   else
-                     []
-                   end
-        valid = filter_cited_items(all)
-        gold_file_path = "data/0-gold/#{file_name}.json"
-        gold = if File.exist? gold_file_path
-                 JSON.load_file(gold_file_path)
-               else
-                 []
-               end
-        stats.append([file_name, rejected.length, all.length, valid.length, gold.length])
+        # break if progressbar.progress > 100
+
+        file_name = File.basename(file_path, '.json')
+        row = [file_name]
+        # rejected items
+        rf_path = "data/3-csl-rejected/#{file_name}.json"
+        row.append(File.exist?(rf_path) ? JSON.load_file(rf_path).length : nil)
+        # all non-rejected
+        all = filter_cited_items(JSON.load_file(file_path))
+        row.append(all.length)
+        # all valid
+        row.append(filter_cited_items(all).length)
+        # gold files
+        gf_path = "data/0-gold/#{file_name}.json"
+        row.append(File.exist?(gf_path) ? JSON.load_file(gf_path).length : nil)
+        # vendor data
+        vendors.each do |vendor|
+          refs = vendor_cache.dig(vendor, file_name)
+          refs = refs.first if refs.is_a? Array
+          refs = refs['reference'] if refs.is_a? Hash
+          row.append(refs.is_a?(Array) ? refs.length : 0)
+        end
+
+        # write row
+        stats.append(row)
       end
       File.write(outfile, stats.map(&:to_csv).join)
       puts "Data written to #{outfile}..."
@@ -139,35 +192,6 @@ class Workflow
       end
     end
 
-    def fetch_metadata
-      files = Dir.glob(refs_glob).map(&:untaint)
-      progressbar = ProgressBar.create(title: 'Fetching metadata for citing items:',
-                                       total: files.length,
-                                       **progress_defaults)
-
-      outfile = File.join(metadata_dir, 'metadata.json')
-      result = if File.exist? outfile
-                 JSON.load_file(outfile)
-               else
-                 {}
-               end
-
-      files.each do |file_path|
-        progressbar.increment
-        file_name = File.basename(file_path, '.json')
-        next unless result[file_name].nil?
-
-        begin
-          result[file_name] = Datasource::Utils.get_metadata_from_filename(file_name)
-        rescue StandardError => e
-          puts "Encountered exception: #{e.inspect}, skipping #{file_name}..."
-        end
-      end
-
-      text = JSON.pretty_generate(result)
-      File.write(outfile, text)
-    end
-
     def filter_cited_items(cited_items)
       cited_items.reject do |item|
         item['title'].nil? || item['issued'].nil? ||
@@ -176,14 +200,40 @@ class Workflow
       end
     end
 
+    def read_dimensions_data
+      files = Dir.glob('data/0-metadata/Dimensions-*.csv').map(&:untaint)
+      data = []
+      files.each do |file_path|
+      end
+    end
+
+    # given a unique, resolvable id (currently, DOI and ISBN), return cited items as CSL-JSON
+    # from the sources available in this workflow
+    def get_cited_items(unique_id)
+      case unique_id
+      when /^978/, /^isbn:/i
+        nil
+      when /^10\./, /^doi:/i
+        # extracted refs
+        file_path = "data/3-refs/#{unique_id.sub('/', '_')}"
+        items = if File.exist? file_path
+                  filter_cited_items(JSON.load_file(file_path))
+                else
+                  {}
+                end
+
+      end
+    end
+
     def export_to_wos
       files = Dir.glob(refs_glob).map(&:untaint)
       progressbar = ProgressBar.create(title: 'Exporting to WOS file:',
                                        total: files.length,
                                        **progress_defaults)
-      metadata_file = File.join(metadata_dir, 'metadata.json')
+      metadata_file = File.join(metadata_dir, 'crossref.json')
       fetch_metadata unless File.exist? metadata_file
       metadata = JSON.load_file(metadata_file)
+      wosexport_file_path = File.join('data', '5-export', "wos-export-#{timestamp}.txt")
       Export::Wos.write_header(wosexport_file_path)
       files.each do |file_path|
         progressbar.increment
@@ -191,7 +241,7 @@ class Workflow
         item = metadata[file_name]
         next if item.nil?
 
-        cited_items = filter_cited_items(JSON.load_file(file_path))
+        cited_items = get_cited_items(item['DOI'])
         Export::Wos.append_record(wosexport_file_path, item, cited_items)
       end
     end
@@ -205,7 +255,7 @@ class Workflow
       files.each do |file_path|
         progressbar.increment
         file_name = File.basename(file_path, '.json')
-        work = Datasource::Utils.get_metadata_from_filename(file_name, true) # returns a Work or {family, date, title,doi}
+        # work = Datasource::Utils.fetch_metadata_by_identifier(file_name, datasources: ['neo4j']) # returns a Work or {family, date, title,doi}
         case work
         when Work
           family = work.first_creator_name

@@ -59,6 +59,8 @@ module Datamining
       items.map do |item|
         # we don't need "scripts" info, it's not CSL-JSON compliant anyways
         item.delete(:scripts)
+        # add citation data source
+        item[:'citation-data-source'] = 'https://github.com/cboulanger/anystyle-workflow'
         # fix missing/incorrect types
         item[:type] = 'book' if item[:type].nil? && (item[:issued] && !item['container-title'])
         if item[:editor] || item[:'publisher-place'] || item[:publisher] || item[:edition]
