@@ -6,6 +6,9 @@ require 'json'
 require 'csv'
 
 class Workflow
+
+  @datasources = %w[crossref dimensions openalex]
+
   class << self
     def progress_defaults
       {
@@ -27,6 +30,10 @@ class Workflow
       File.join('data', '0-metadata')
     end
 
+    def export_dir
+      File.join('data', '5-export')
+    end
+
     def create_gold_csl
       anystyle = Datamining::AnyStyle.new('./models/finder.mod', './models/parser.mod')
       files = Dir.glob('data/0-gold/*.xml').map(&:untaint)
@@ -38,12 +45,14 @@ class Workflow
       end
     end
 
-    def fetch_metadata
+    # Generates CSL metadata for all files from the given datasources, using
+    # cached data it has been already retrieved
+    # @param [Array<String (frozen)>] datasources
+    def generate_csl_metadata(datasources: %w[crossref dimensions openalex], limit: nil, break_on_error: false)
       # load cached metadata
-      datasources = %w[crossref dimensions]
       cache = {}
       datasources.each do |ds|
-        file_path = "data/0-metadata/#{ds}.json"
+        file_path = "data/0-metadata/#{ds}.json" # un-hardcode!
         cache[ds] = if File.exist? file_path
                       JSON.load_file(file_path)
                     else
@@ -56,8 +65,10 @@ class Workflow
       progressbar = ProgressBar.create(title: 'Fetching missing metadata for citing items:',
                                        total: files.length,
                                        **progress_defaults)
+      counter = 0
       files.each do |file_path|
         progressbar.increment
+
         file_name = File.basename(file_path, '.json')
         datasources.each do |ds|
           next if cache[ds][file_name]
@@ -66,10 +77,13 @@ class Workflow
           begin
             meta = Datasource::Utils.fetch_metadata_by_identifier doi, datasources: [ds]
             cache[ds][file_name] = meta.first unless meta.empty?
+            counter += 1
           rescue StandardError => e
             $logger.error "While querying #{ds} for #{doi}, encountered exception: #{e.inspect}"
+            raise e if break_on_error
           end
         end
+        break if limit && counter >= limit
       end
 
       # write cache files to disk
@@ -109,7 +123,7 @@ class Workflow
         file_name = File.basename(file_path, '.txt')
         outfile = File.join('data', '3-csl', "#{file_name}.json")
         progressbar.increment
-        next if overwrite == false && File.exist?(outfile)
+        next if !overwrite && File.exist?(outfile)
 
         csl = anystyle.extract_refs_as_csl(file_path)
         File.write outfile, JSON.pretty_generate(csl)
@@ -130,7 +144,7 @@ class Workflow
       columns = %w[file rejected all valid gold]
 
       # vendor data
-      vendors = %w[crossref dimensions]
+      vendors = %w[crossref dimensions openalex]
       columns += vendors
       vendor_cache = {}
       vendors.each do |vendor|
@@ -231,7 +245,7 @@ class Workflow
                                        total: files.length,
                                        **progress_defaults)
       metadata_file = File.join(metadata_dir, 'crossref.json')
-      fetch_metadata unless File.exist? metadata_file
+      generate_csl_metadata unless File.exist? metadata_file
       metadata = JSON.load_file(metadata_file)
       wosexport_file_path = File.join('data', '5-export', "wos-export-#{timestamp}.txt")
       Export::Wos.write_header(wosexport_file_path)

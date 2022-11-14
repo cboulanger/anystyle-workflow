@@ -57,5 +57,5 @@ module Datasource
 end
 
 Serrano.configuration do |config|
-  config.mailto = ENV['CROSSREF_EMAIL']
+  config.mailto = ENV['API_EMAIL']
 end

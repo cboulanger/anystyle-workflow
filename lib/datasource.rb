@@ -6,6 +6,7 @@ require './lib/datasource/crossref'
 #require './lib/datasource/lobid'
 #require './lib/datasource/openlibrary'
 require './lib/datasource/dimensions'
+require './lib/datasource/openalex'
 
 module Datasource
   class Utils
@@ -27,6 +28,8 @@ module Datasource
           ::Datasource::Crossref
         when 'dimensions'
           ::Datasource::Dimensions
+        when 'openalex'
+          ::Datasource::OpenAlex
         else
           raise "Unknown datasource #{datasource}"
         end
