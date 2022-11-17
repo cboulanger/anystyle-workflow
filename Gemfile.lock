@@ -66,6 +66,7 @@ GEM
     rainbow (3.1.1)
     rbtree (0.4.5)
     regexp_parser (2.6.0)
+    require_all (3.0.0)
     rexml (3.2.5)
     rubocop (1.38.0)
       json (~> 2.3)
@@ -110,6 +111,7 @@ DEPENDENCIES
   dotenv (~> 2.1, >= 2.1.1)
   httpx
   neo4j-ruby-driver (~> 4.4.0.alpha.6)
+  require_all (~> 3.0)
   rubocop
   ruby-progressbar (~> 1.11)
   serrano

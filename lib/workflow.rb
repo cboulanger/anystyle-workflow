@@ -1,12 +1,11 @@
 # frozen_string_literal: true
 
-require './lib/libs'
+require './lib/bootstap'
 require 'ruby-progressbar'
 require 'json'
 require 'csv'
 
 class Workflow
-
   @datasources = %w[crossref dimensions openalex]
 
   class << self
@@ -141,29 +140,45 @@ class Workflow
                                        **progress_defaults)
       outfile = File.join('data', '5-export', "extraction-stats-#{timestamp}.csv")
       stats = []
-      columns = %w[file rejected all valid gold]
+      columns = %w[file journal year a_all a_rejected a_potential a_valid gold]
 
       # vendor data
-      vendors = %w[crossref dimensions openalex]
+      vendors = %w[crossref dimensions openalex wos]
       columns += vendors
       vendor_cache = {}
       vendors.each do |vendor|
         vendor_path = "data/0-metadata/#{vendor}.json"
         vendor_cache[vendor] = (JSON.load_file vendor_path if File.exist? vendor_path)
       end
+      crossref_meta = vendor_cache['crossref']
+      raise 'CrossRef metadata is required' unless crossref_meta
+
       stats.append columns
       files.each do |file_path|
         progressbar.increment
-        # break if progressbar.progress > 100
-
         file_name = File.basename(file_path, '.json')
-        row = [file_name]
+        begin
+          year = crossref_meta[file_name]['issued']['date-parts'].first.first
+          journal = case crossref_meta[file_name]['container-title']
+                    when /^Zeitschrift/
+                      'zfrsoz'
+                    else
+                      'jls'
+                    end
+        rescue StandardError
+          $logger.error "Problem parsing year/journal for #{file_name}"
+          next
+        end
+        row = [file_name, journal, year]
+        # all found
+        all = JSON.load_file(file_path)
+        row.append(all.length)
         # rejected items
         rf_path = "data/3-csl-rejected/#{file_name}.json"
         row.append(File.exist?(rf_path) ? JSON.load_file(rf_path).length : nil)
-        # all non-rejected
-        all = filter_cited_items(JSON.load_file(file_path))
-        row.append(all.length)
+        # all non-rejected are potential candidates
+        potential = filter_cited_items(all)
+        row.append(potential.length)
         # all valid
         row.append(filter_cited_items(all).length)
         # gold files

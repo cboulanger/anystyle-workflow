@@ -1,3 +1,5 @@
+require 'require_all'
+
 require './lib/env'
 require './lib/utils'
 require './lib/logger'

@@ -8,3 +8,5 @@ gem 'neo4j-ruby-driver', '~> 4.4.0.alpha.6'
 gem 'rubocop', group: 'development'
 gem 'ruby-progressbar', '~> 1.11'
 gem 'serrano'
+
+gem "require_all", "~> 3.0"
