@@ -10,3 +10,5 @@ gem 'ruby-progressbar', '~> 1.11'
 gem 'serrano'
 
 gem "require_all", "~> 3.0"
+
+gem "pycall", "~> 1.4"

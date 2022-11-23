@@ -10,8 +10,12 @@ module Datamining
     attr_accessor :output_intermediaries
 
     def initialize(finder_model_path = nil, parser_model_path = nil)
-      ::AnyStyle.finder.load_model(finder_model_path || File.join(Dir.pwd, ENV['MODEL_PATH'], 'finder.mod').untaint)
-      ::AnyStyle.parser.load_model(parser_model_path || File.join(Dir.pwd, ENV['MODEL_PATH'], 'parser.mod').untaint)
+      unless ENV['MODEL_PATH'].nil? || ENV['MODEL_PATH'].empty?
+        finder_model_path ||= File.join(Dir.pwd, ENV['MODEL_PATH'], 'finder.mod').untaint
+        parser_model_path ||= File.join(Dir.pwd, ENV['MODEL_PATH'], 'parser.mod').untaint
+      end
+      ::AnyStyle.finder.load_model(finder_model_path) if finder_model_path
+      ::AnyStyle.parser.load_model(parser_model_path) if parser_model_path
     end
 
     def extract_text(file_path)
@@ -40,6 +44,10 @@ module Datamining
 
     def xml_to_csl(xml)
       fix_csl ::AnyStyle.parser.format_csl(xml_to_wapiti(xml))
+    end
+
+    def xml_to_hash(xml)
+      ::AnyStyle.parser.format_hash(xml_to_wapiti(xml))
     end
 
     def extract_refs_as_hash(file_path)
