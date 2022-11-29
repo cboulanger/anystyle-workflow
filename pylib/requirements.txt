@@ -1,0 +1,5 @@
+wheel
+lxml
+nltk
+strsim
+pandas

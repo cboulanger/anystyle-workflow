@@ -42,14 +42,16 @@ def get_time(date):
         splitter = " "
     elif "-" in date:
         splitter = "-"
+    elif "/" in date:
+        splitter = "/"
     else:
         date = re.sub('\D', '', date)
         try:
             datetime.datetime.strptime(date, "%Y")
             return date
         except ValueError:
-            print('Not able to match the year.')
-            return ""
+            raise ValueError(f"Not able to match the year in '{date}'")
+
     #  da qua in poi tentare un for loop per fare il match della data con un solo try/ else per caso
     if len(splitter) != 0:
         split_date = date.split(splitter)

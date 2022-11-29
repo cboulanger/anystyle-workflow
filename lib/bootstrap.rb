@@ -4,6 +4,10 @@ require 'require_all'
 require 'pycall'
 PyCall.sys.path.append('./pylib')
 
+require 'ruby-progressbar'
+require 'json'
+require 'csv'
+
 # refactor this with require_all
 require './lib/env'
 require './lib/utils'

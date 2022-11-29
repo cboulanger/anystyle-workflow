@@ -59,6 +59,6 @@ def create_standard_reference(node, node_name, attr_key, attr_value, node_text, 
             element.attrib[attr_key[n]] = attr_value[n]
             n += 1
     if node_text:
-        element.text = node_text
+        element.text = str(node_text)
     cur_counter = cur_counter + 1
     return node, cur_counter

@@ -4,10 +4,6 @@ import json
 from meta_eval import compare_meta, compare_single
 
 
-# input_data = ['Anystyle', 'Cermine', 'ExCite', 'Grobid', 'Pdfssa4met', 'Scholarcy', 'ScienceParse']
-input_data = ['ScienceParse']  # TEMPORANEO
-path_to_gs = 'C:/Users/VM-Alessia/Desktop/tesi/software_eval/goldStand_parsed/gold_standard_files/'
-path_to_output = 'C:/Users/VM-Alessia/Desktop/tesi/software_eval/goldStand_parsed/parsed_output_files/'
 types_l = [(['article', 'newspaper'], ['date', 'monogr-title', 'analytic-title', 'biblScope_unit_volume', 'biblScope_unit_page']),
            (['chapter', 'ebook-chapter', 'technical-report-chapter', 'proceeding', 'conference'], ['date', 'analytic-title', 'monogr-title']),
            (['book', 'ebook', 'manual', 'data-sheet', 'database', 'online-database', 'preprint', 'technical-report', 'software', 'standard', 'preprint'], ['date', 'monogr-title']),
@@ -17,8 +13,8 @@ types_l = [(['article', 'newspaper'], ['date', 'monogr-title', 'analytic-title',
            (['webpage'], ['date', 'ref'])
            ]
 pars_except = {'Cermine': ['note', 'idno_type_docNumber', 'ref'],
-               'Pdfssa4met': ['analytic-title', 'note', 'idno_type_docNumber', 'ref'],
-               'ScienceParse': ['note', 'idno_type_docNumber', 'ref']}
+           'Pdfssa4met': ['analytic-title', 'note', 'idno_type_docNumber', 'ref'],
+           'ScienceParse': ['note', 'idno_type_docNumber', 'ref']}
 
 
 def count_meta_per_ref(input_l, reference, meta_counter, limitation_list, grobid, max_aut):
@@ -317,10 +313,14 @@ def get_single_data(out_file, gs_file, parser_name):
             cur_out = out_root[0][0][count_out]  # current reference in output file
         cur_type = gs_root[0][0][count_gs].get('type')
 
+        if cur_type is None:
+            raise ValueError("Cannot find type information for " + str(etree.tostring(gs_root[0][0][count_gs])))
+
         # we are inside one single function: check if the metadata exist
         # check if they both have the same macro sections
         gs_l = get_metadata(cur_gs, [], ['analytic', 'monogr', 'series'])
         out_l = get_metadata(cur_out, [], ['analytic', 'monogr', 'series'])
+
         if 'Grobid' in out_file:
             grobid = True
         else:
@@ -579,7 +579,7 @@ def create_json(file_name, js_dict, values, index, parser_name):
 
 # the objective is to count the values of each file and return them as a list, for input to the prior function
 # second aim is creating a json file for each parser, including all the single papers and topics
-def get_file_data(path, parser_name):
+def get_file_data(path, parser_name, path_to_gs):
     output = [0, 0, 0, 0, 0, 0, 0, 0, 0]  # list that will contain the final values of all the files of the dataset
     missing = []
     to_json = {}
@@ -659,15 +659,14 @@ def get_file_data(path, parser_name):
     return output
 
 
-def get_parsr_data():
+def get_parser_data(input_data, path_to_gs, path_to_output):
     output = []
     for tup in input_data:
         temp_out = [tup, {}]
         key_l = ['ref_tot_gs', 'ref_tot_out', 'ref_tot_corr', 'meta_tot_gs', 'meta_tot_out', 'meta_tot_corr',
                  'text_tot_gs', 'text_tot_out', 'text_tot_corr']
         # the output of the get_file_data funct is a list of the values to associate to the keys
-        # value_l = get_file_data(tup[1])
-        value_l = get_file_data(path_to_output+tup, tup)
+        value_l = get_file_data(os.path.join(path_to_output, tup), tup, path_to_gs)
         # while loop to associate the keys to the respective values
         n = 0
         while n < len(key_l):
@@ -679,8 +678,11 @@ def get_parsr_data():
 
 
 # compute precison, recall and f-score for each parser + print out a json file with the results
-def compute_values():
-    final_data = get_parsr_data()
+# input_data: list of parser names to test, which will be prepended to the the gold standard path and the output path
+# path_to_gs: the path to the directory containing the XML-TEI gold standard
+# path_to_output: path to the directory containing subfolders with the XML-TEI result of the individual parsers
+def compute_values(input_data, path_to_gs, path_to_output):
+    final_data = get_parser_data(input_data, path_to_gs, path_to_output)
     keys = [('ref', 'references'), ('meta', 'metadata'), ('text', 'content')]
     output = {}
     for parser in final_data:
@@ -693,13 +695,4 @@ def compute_values():
             # total_comput['values'].append({key[1]:[{'precision': precision, 'recall': recall, 'f-score': f_score}]})
             total_comput[0].update({key[1]: [{'precision': precision, 'recall': recall, 'f-score': f_score}]})
         output.update({parser[0]: total_comput})
-    print('Compare values: ', output)
-    json_file = json.dumps(output, indent=2)
-
-    # create the final json file
-    # with open('sample.json', 'w') as out:
-        # out.write(json_file)
-
-
-if __name__ == "__main__":
-    compute_values()
+    return output

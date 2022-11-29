@@ -49,7 +49,12 @@ def create_citation(metadata_list, analyt_node, mono_node, imprint_node, series_
             series_node, series = create_standard_reference(series_node, 'title', ['level'], ['s'], coupled_meta[1], series)
 
         elif coupled_meta[0] == 'date':  # and year == 0:
-            imprint_node, year = create_standard_reference(imprint_node, 'date', ['when'], [get_time(str(coupled_meta[1]))], str(coupled_meta[1]), year)
+            try:
+                date = get_time(str(coupled_meta[1]))
+            except ValueError as err:
+                sys.stderr.write(str(err) + f". Full reference: {JS.dumps(metadata_list)}\n")
+                date = ""
+            imprint_node, year = create_standard_reference(imprint_node, 'date', ['when'], [date], str(coupled_meta[1]), year)
 
         elif coupled_meta[0] == 'volume':  # and volume == 0:
             if series_node is None:
@@ -81,16 +86,17 @@ def create_citation(metadata_list, analyt_node, mono_node, imprint_node, series_
             mono_node, uri = create_standard_reference(mono_node, 'note', None, None, coupled_meta[1], uri)
 
         else:
-            #pass
-            print("Ignoring " + str(coupled_meta))
+            pass
+            #print("Ignoring " + str(coupled_meta))
 
 
-def add_listbibl(tree, cit_id, metadata_list, analytic_var, series_var):
+def add_listbibl(tree, cit_id, metadata_list, analytic_var, series_var, type):
     root = tree.getroot()
 
     # create listBibl with respective id
     listbibl_element = etree.SubElement(root[0][0], 'biblStruct')
     listbibl_element.attrib[QName("http://www.w3.org/XML/1998/namespace", "id")] = "b"+str(cit_id)
+    listbibl_element.attrib["type"] = type
     # create sections analytic and/or monograph
     analyt_node, series_node = None, None
     if analytic_var:
@@ -104,9 +110,10 @@ def add_listbibl(tree, cit_id, metadata_list, analytic_var, series_var):
 
 
 def anystyle_parser(infile, outfile):
+    print(infile)
     try:
         generate_xml(outfile)
-        pub_list = ['article-journal', 'chapter', 'paper-conference']  # cases in which analytitc node is created
+        pub_list = ['article', 'chapter', 'paper-conference']  # cases in which analytic node is created
 
         # load the file and check if there are references in list
         with open(infile, encoding="utf8") as json_file:
@@ -115,7 +122,7 @@ def anystyle_parser(infile, outfile):
                 pass
                 # print("references: ", data)
             else:
-                sys.exit('Ops, no bibliographic section found!')
+                raise RuntimeError("No bibliographic section found")
 
             # check and list the metadata present in the input json file
             outtree = etree.parse(outfile)
@@ -124,7 +131,7 @@ def anystyle_parser(infile, outfile):
                 analytic_var, series_var = False, False
                 keys = ref.keys()
                 for field in keys:
-                    # check if the reference type allows to create the analytitc section or not
+                    # check if the reference type allows to create the analytic section or not
                     if field == 'type' and ref[field] in pub_list:
                         analytic_var = True
                     # separate the metadata so that in the creation phase they are ready to be analysed
@@ -139,25 +146,9 @@ def anystyle_parser(infile, outfile):
                         # the fields, if not present should not be identified, else counted as an empty data
                         else:
                             all_meta.append((field, ""))
+                add_listbibl(outtree, data.index(ref), all_meta, analytic_var, series_var, ref['type'])
 
-                #print(all_meta)
-                add_listbibl(outtree, data.index(ref), all_meta, analytic_var, series_var)
         add_to_xml(outtree, outfile)
 
     except FileNotFoundError:
-        sys.exit('No file found: {}'.format(infile)+'. Check if the filepath and the file name are correct.')
-
-
-# Driver Code
-# use absolute path, es. '/Users/alessiacioffi/Desktop/dhdk/tesi/gold_standard/XML_citations/AGR-BIO-SCI_1.xml'
-if __name__ == "__main__":
-    # change the input XML so to call create_tei_xml
-    # filename = os.path.splitext('paper_test.cermxml')[0]
-    filename = 'z_notes_test2.json'
-    only_name = os.path.splitext(filename)[0]
-    # path to the folder of the output directory: use absolute path, e.g. /Users/alessiacioffi/Desktop/dhdk/tesi/conversion_to_TEI/scholarcy
-    out_path = 'C:/Users/VM-Alessia/Desktop/conversion_output_files/'
-    # path to the folder of the output directory: use absolute path, es. /Users/alessiacioffi/Desktop/dhdk/tesi/gold_standard/XML_citations
-    in_path = 'C:/Users/VM-Alessia/Desktop/temporary/'
-    # launch the filling function with the path of the input xml and the one of the output xml
-    anystyle_parser(in_path+filename, out_path+only_name+"_tei.xml")
+        raise FileExistsError(f"File '{infile}' does not exist.")

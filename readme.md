@@ -9,4 +9,4 @@ todo: ruby
 
 The workflow also relies on some Python scripts which are called from within ruby using the 
 [pycall](https://github.com/mrkn/pycall.rb) gem. For this to work, you need a Python executable 
-that has been compiled with the "--enable-shared" option. You also need the lxml module
+that has been compiled with the "--enable-shared" option and the

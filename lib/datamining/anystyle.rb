@@ -7,8 +7,6 @@ module Datamining
   class AnyStyle
     include ::AnyStyle::PDFUtils
 
-    attr_accessor :output_intermediaries
-
     def initialize(finder_model_path = nil, parser_model_path = nil)
       unless ENV['MODEL_PATH'].nil? || ENV['MODEL_PATH'].empty?
         finder_model_path ||= File.join(Dir.pwd, ENV['MODEL_PATH'], 'finder.mod').untaint
@@ -18,59 +16,53 @@ module Datamining
       ::AnyStyle.parser.load_model(parser_model_path) if parser_model_path
     end
 
-    def extract_text(file_path)
-      pdf_to_text(file_path)
-    end
-
-    def extract_references(file_path)
-      # remove leading spaces
-      File.write(file_path, File.read(file_path).split("\n").map(&:strip).join("\n"))
+    # Given a file path, return the raw references as a newline-separated text
+    def file_to_refs_txt(file_path)
       refs = ::AnyStyle.finder.find(file_path, format: :references)[0]
-      refs_txt = refs.map(&:strip).join("\n")
-      if @output_intermediaries
-        File.write("data/3-refs/#{File.basename(file_path)}", refs_txt)
-        ttx = ::AnyStyle.finder.find(file_path, format: :wapiti)[0].to_s(tagged: true)
-        File.write("data/3-ttx/#{"#{File.basename(file_path, '.txt')}.ttx"}", ttx)
-      end
-      seqs = ::AnyStyle.parser.label refs_txt
-      xml_to_wapiti seqs.to_xml(indent: 2)
+      refs.map(&:strip).join("\n")
     end
 
+    def file_to_ttx(file_path)
+      ::AnyStyle.finder.find(file_path, format: :wapiti)[0].to_s(tagged: true)
+    end
+
+    def refs_txt_to_xml(refs_txt)
+      seqs = ::AnyStyle.parser.label refs_txt
+      seqs.to_xml(indent: 2)
+    end
+
+    # parses an xml string containing a dataset of reference sequences
+    # into a wapiti tagged dataset. If a sequence contains several references,
+    # they will be split into separate sequences.
     def xml_to_wapiti(xml)
       doc = REXML::Document.new xml.gsub(/\n */, '')
       doc = split_multiple_references(doc)
       Wapiti::Dataset.parse(doc)
     end
 
-    def xml_to_csl(xml)
-      fix_csl ::AnyStyle.parser.format_csl(xml_to_wapiti(xml))
+    # Converts dataset into an array of hashes in the CSL-JSON schema, fixing
+    # problems not handled by the anystyle normalizer
+    # @param [Wapiti::Dataset] ds
+    # @return [Array]
+    def wapiti_to_csl(ds)
+      fix_csl ::AnyStyle.parser.format_csl(ds)
     end
 
-    def xml_to_hash(xml)
-      ::AnyStyle.parser.format_hash(xml_to_wapiti(xml))
+    # Converts an AnyStyle parser xml training document into an array of hashes.
+    # Splits up multiple references that occur in a sequence.
+    # @param [Wapiti::Dataset] ds
+    # @return [Array]
+    def wapiti_to_hash(ds)
+      ::AnyStyle.parser.format_hash(ds)
     end
 
-    def extract_refs_as_hash(file_path)
-      ::AnyStyle.parser.format_hash(extract_references(file_path))
-    end
-
-    def extract_refs_as_csl(file_path)
-      items = ::AnyStyle.parser.format_csl(extract_references(file_path))
-      selected, rejected = filter_invalid_items(items)
-      if output_intermediaries
-        File.write("data/3-csl-rejected/#{File.basename(file_path, '.txt')}.json", JSON.pretty_generate(rejected))
-      end
-      fix_csl(selected)
-    end
-
+    # fixes problems in a CSL-JSON hash
     def fix_csl(items)
       items.map do |item|
         # we don't need "scripts" info, it's not CSL-JSON compliant anyways
         item.delete(:scripts)
-        # add citation data source
-        item[:'citation-data-source'] = 'https://github.com/cboulanger/anystyle-workflow'
         # fix missing/incorrect types
-        item[:type] = 'book' if item[:type].nil? && (item[:issued] && !item['container-title'])
+        item[:type] = 'book' if item[:type].nil? && (item[:issued] && !item[:'container-title'])
         if item[:editor] || item[:'publisher-place'] || item[:publisher] || item[:edition]
           item[:type] = if item[:'container-title'] || item[:author]
                           'chapter'
@@ -84,7 +76,7 @@ module Datamining
     end
 
     # Removes items that appear to be false positives
-    def filter_invalid_items(items)
+    def filter_invalid_csl_items(items)
       selected = []
       rejected = []
       items.each do |item|
