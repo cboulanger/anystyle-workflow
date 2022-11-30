@@ -1,6 +1,6 @@
 from lxml import etree
 import os, sys
-import json
+import json, re
 from meta_eval import compare_meta, compare_single
 
 
@@ -17,7 +17,7 @@ pars_except = {'Cermine': ['note', 'idno_type_docNumber', 'ref'],
            'ScienceParse': ['note', 'idno_type_docNumber', 'ref']}
 
 
-def count_meta_per_ref(input_l, reference, meta_counter, limitation_list, grobid, max_aut):
+def count_meta_per_ref(input_l, reference, meta_counter, limitation_list, grobid, max_aut, xml_prefix=True):
     # create basic structures
     out_list = []
     cur_meta, count_aut = 0, 0
@@ -26,7 +26,7 @@ def count_meta_per_ref(input_l, reference, meta_counter, limitation_list, grobid
     # enter each occurrence in the input structure
     for struct in input_l:
         # attribute the correct tag on the basis of the limitation list and grobid factors
-        if limitation_list and not grobid:
+        if (limitation_list and not grobid) or not xml_prefix:
             tag = './/'
         else:
             tag = './/{http://www.tei-c.org/ns/1.0}'
@@ -208,7 +208,8 @@ def get_selected_elements(reference, el_list, prefix, grobid):
         path = './'
         for field in el.split('-'):  # mettere questo pezzo in un try else
             if '_' in field:
-                field = field.split('_')[0]+"[@"+field.split('_')[1]+"='"+field.split('_')[2]+"']"
+                p = field.split('_')
+                field = f"{p[0]}[@{p[1]}='{p[2]}']"
             elif field == 'ref' and grobid:
                 field = 'ptr'
             path += pre+field
@@ -258,7 +259,6 @@ def get_metadata(cur_ref, out_l, elem_l):
 
 # in this function we go inside each specific file and extract its information
 def get_single_data(out_file, gs_file, parser_name):
-    # print(gs_file)
     output = []
     # enter the gs and output xml with etree
     parser = etree.XMLParser(recover=True)  # prova per vedere se il parser semplifica le cose
@@ -295,7 +295,7 @@ def get_single_data(out_file, gs_file, parser_name):
             # return None  # in case no reference is retrieved its values are not counted in the total evaluation
             cur_id = gs_root[0][0][-1].attrib['{http://www.w3.org/XML/1998/namespace}id']
             output.append(int(cur_id[1:]) + 1)
-            # print('Get single data: (no ref found)', output)
+            sys.stderr.write(f"No reference found in {out_file}")
             return output
 
     # looking for the number of correct references
@@ -305,7 +305,9 @@ def get_single_data(out_file, gs_file, parser_name):
     compared = {}
     prev_type = ''
     last_found = 0  # index of the last identified correct reference in the gold standard
-    while count_out < output[1] and count_gs < output[0]:  # funct continues until last reference in output is analysed
+    limit = 5
+    while count_out < output[1] and count_gs < output[0] and limit > 0:   # funct continues until last reference in output is analysed
+        limit -= 1
         cur_gs = gs_root[0][0][count_gs]  # current reference in gold standard
         if 'Grobid' in out_file:
             cur_out = refs[count_out]  # current reference in output file
@@ -341,7 +343,13 @@ def get_single_data(out_file, gs_file, parser_name):
                     vals[0].remove(val)
 
         # check necessary metadata and respective values in gs
+        xml_prefix = True
         meta_to_compare = get_selected_elements(cur_gs, vals, True, False)
+        if len(meta_to_compare) == 0:
+            # try again without prefix
+            meta_to_compare = get_selected_elements(cur_gs, vals, False, False)
+            xml_prefix = False
+
         # check if the respective metadata is present in the output file
         '''if not len(prev_type) or prev_type != cur_type or not len(compared):  # da finire di sistemare, manca il caso in cui il tipo sia lo stesso ma il numero di metadati no
         # if prev_type == cur_type and not len(compared):
@@ -350,15 +358,16 @@ def get_single_data(out_file, gs_file, parser_name):
             compared = get_selected_elements(cur_out, [list(keys)], grobid)'''
 
         if len(meta_to_compare):
-
             keys = set([tup[0] for tup in meta_to_compare])
             compared = get_selected_elements(cur_out, [list(keys)], grobid, grobid)
             # compara i valori: do metadata coincide? Call an external function to verify it
             temporary_value, not_found = compare_meta(meta_to_compare, compared, cur_type)
-
         else:
             temporary_value, not_found = False, None
-            #print(cur_gs.get('{http://www.w3.org/XML/1998/namespace}id'))
+            id = cur_gs.get('{http://www.w3.org/XML/1998/namespace}id')
+            gold_xml = re.sub(r'\\n|\s{2,}', '', str(etree.tostring(cur_gs)))
+            sys.stderr.write(f"Nothing to compare for {out_file}:{id} {vals}\n")
+            sys.stderr.write(f"Gold:  {gold_xml}\n")
 
         # we are inside the file: do necessary data coincide? In case it is so enter
         if temporary_value:
@@ -369,7 +378,7 @@ def get_single_data(out_file, gs_file, parser_name):
 
             # 3. creare sottofunzione che guardi tutti i metadati, per l'output solo se trovati nel gold standard
             # tot_gs_meta is summed with the number of metadata identified
-            tot_gs_meta, gs_comp, cur_tot_gs = count_meta_per_ref(gs_l, cur_gs, tot_gs_meta, None, False, None)
+            tot_gs_meta, gs_comp, cur_tot_gs = count_meta_per_ref(gs_l, cur_gs, tot_gs_meta, None, False, None, xml_prefix)
             # tot_out_meta is summed with the number of metadata identified (max same metadata but may more occurrences)
             cur_keys = set([tup[0] for tup in gs_comp])
 
@@ -386,7 +395,7 @@ def get_single_data(out_file, gs_file, parser_name):
             for element in gs_comp:
                 if element[0] == 'persName':
                     max_aut.extend(element[1])
-            tot_out_meta, out_comp, cur_tot_out = count_meta_per_ref(out_l, cur_out, tot_out_meta, cur_keys, grobid, len(max_aut))
+            tot_out_meta, out_comp, cur_tot_out = count_meta_per_ref(out_l, cur_out, tot_out_meta, cur_keys, grobid, len(max_aut), xml_prefix)
 
             # intersection in order to get only the metadata that are in the gold standard
             comm = set([tup[0] for tup in gs_comp]).intersection(set([tup[0] for tup in out_comp]))
@@ -576,8 +585,9 @@ def create_json(file_name, js_dict, values, index, parser_name) -> dict:
 
 # the objective is to count the values of each file and return them as a list, for input to the prior function
 # second aim is creating a json file for each parser, including all the single papers and topics
-# returns a dict with keys "result", containing a list of lists with the numeric results, and "diagnostic", containing
-# the more verbose file-level diagnostic data
+#
+# returns a dict with keys "result", containing a list of lists with the numeric results,  "diagnostic", containing
+# the more verbose file-level diagnostic data, and "missing", containing data on the missing files
 def get_file_data(path, parser_name, path_to_gs):
     output = [0, 0, 0, 0, 0, 0, 0, 0, 0]  # list that will contain the final values of all the files of the dataset
     missing = []
@@ -590,38 +600,43 @@ def get_file_data(path, parser_name, path_to_gs):
         out_list = files_list
         gs_list = list(os.listdir(path_to_gs))
     else:
-        gs = list(os.listdir(path_to_gs))
-        out_list, gs_list = [], []
-        c = 1
-        while c in range(1, 57):
-            found = False
-            for item in files_list:
-                if parser_name == 'Scholarcy':
-                    str_search = '_'+str(c)+'.pdf_tei'
-                else:
-                    str_search = '_'+str(c)+'_'
-                if str_search in item or 'z_notes_test'+str(c-54) in item:
-                    out_list.append(files_list[files_list.index(item)])
-                    for item2 in gs:
-                        if item2.split('_')[1] == str(c)+'.xml' or 'z_notes_test'+str(c-54) in item2:
-                            gs_list.append(gs[gs.index(item2)])
-                            found = True
-                            break
-                if found:
-                    break
-            if not found:
-                for item2 in gs:
-                    if item2.split('_')[1] == str(c) + '.xml' or 'z_notes_test' + str(c - 54) in item2:
-                        missing.append(gs[gs.index(item2)])
-                        break
-            c += 1
+        raise RuntimeError("Number of parser output files and gold standard files do not match.")
+        # the following only makes sense with the original dataset and must be updated to work with arbitrary file names
+        #
+        # gs = list(os.listdir(path_to_gs))
+        # out_list, gs_list = [], []
+        # c = 1
+        # while c in range(1, 57): 
+        #     found = False
+        #     for item in files_list:
+        #         if parser_name == 'Scholarcy':
+        #             str_search = '_'+str(c)+'.pdf_tei'
+        #         else:
+        #             str_search = '_'+str(c)+'_'
+        #         if str_search in item or 'z_notes_test'+str(c-54) in item:
+        #             out_list.append(files_list[files_list.index(item)])
+        #             for item2 in gs:
+        #                 if item2.split('_')[1] == str(c)+'.xml' or 'z_notes_test'+str(c-54) in item2:
+        #                     gs_list.append(gs[gs.index(item2)])
+        #                     found = True
+        #                     break
+        #         if found:
+        #             break
+        #     if not found:
+        #         for item2 in gs:
+        #             if item2.split('_')[1] == str(c) + '.xml' or 'z_notes_test' + str(c - 54) in item2:
+        #                 missing.append(gs[gs.index(item2)])
+        #                 break
+        #     c += 1
 
     # starts the actual analysis, out_l is used as reference since there may be changes in the number of references
-    while n < len(out_list):  # select one by one the papers in the specified parser's output directory
+    while n < 1:
+    #while n < len(out_list):  # select one by one the papers in the specified parser's output directory
+
         values = [['ref_tot_gs', 0], ['ref_tot_out', 0], ['ref_tot_corr', 0], ['meta_tot_gs', 0], ['meta_tot_out', 0],
                   ['meta_tot_corr', 0], ['text_tot_gs', 0], ['text_tot_out', 0], ['text_tot_corr', 0]]
         out_file = os.path.join(path, out_list[n])
-        gold_file = os.path.join(path_to_gs, gs_list[n])       
+        gold_file = os.path.join(path_to_gs, gs_list[n])
         vals_to_sum = get_single_data(out_file, gold_file, parser_name)
         if vals_to_sum is not None:  # it is true only in case no reference is in the output file
             inner = 0
@@ -629,9 +644,7 @@ def get_file_data(path, parser_name, path_to_gs):
                 values[inner][1] += vals_to_sum[inner]  # update the current state for the json
                 output[inner] += vals_to_sum[inner]  # update the output list for get_parsr_data
                 inner += 1
-
-            # print(values)
-            to_json = create_json(os.listdir(path)[n], to_json, values, n, parser_name)
+            to_json = create_json(out_list[n], to_json, values, n, parser_name)
         else:
             missing.append(out_list[n])
 
@@ -658,6 +671,7 @@ def get_file_data(path, parser_name, path_to_gs):
     # print(output)
     return {
         "result": output,
+        "missing": missing,
         "diagnostic": to_json
     }
 
@@ -666,24 +680,24 @@ def get_file_data(path, parser_name, path_to_gs):
 # path_to_gs: the path to the directory containing the XML-TEI gold standard
 # path_to_output: path to the directory containing subfolders with the XML-TEI result of the individual parsers
 # diagnostic: if true, return verbose file-level diagnostics instead of the raw numeric data
-def get_parser_data(parser_list, path_to_gs, path_to_output, diagnostic=False):
+def get_parser_data(parser_list, path_to_gs, path_to_output, diagnostic=False) -> list:
     output = []
     for parser in parser_list:
-        temp_out = [parser, {}]
-        key_l = ['ref_tot_gs', 'ref_tot_out', 'ref_tot_corr', 'meta_tot_gs', 'meta_tot_out', 'meta_tot_corr',
-                 'text_tot_gs', 'text_tot_out', 'text_tot_corr']
-        # the output of the get_file_data funct is a list of the values to associate to the keys
         file_data = get_file_data(os.path.join(path_to_output, parser), parser, path_to_gs)
         if diagnostic:
-            return file_data['diagnostic'] 
-        value_l = file_data['result'] 
-        # while loop to associate the keys to the respective values
-        n = 0
-        while n < len(key_l):
-            temp_out[1].update({key_l[n]: value_l[n]})
-            n += 1
-            # append the current final list to the comprehensive major list
-        output.append(temp_out)
+            output.append([parser, file_data['diagnostic']])
+        else:
+            temp_out = [parser, {}]
+            key_l = ['ref_tot_gs', 'ref_tot_out', 'ref_tot_corr', 'meta_tot_gs', 'meta_tot_out', 'meta_tot_corr',
+                    'text_tot_gs', 'text_tot_out', 'text_tot_corr']
+            value_l = file_data['result'] 
+            # while loop to associate the keys to the respective values
+            n = 0
+            while n < len(key_l):
+                temp_out[1].update({key_l[n]: value_l[n]})
+                n += 1
+                # append the current final list to the comprehensive major list
+            output.append(temp_out)
     return output
 
 

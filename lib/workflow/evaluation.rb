@@ -40,11 +40,13 @@ module Workflow
         end
       end
 
+      Utils.timestamp
+
       def run
         puts 'Running evaluation'
         py_eval = PyCall.import_module('get_evaluation_metrics')
         # result = py_eval.get_parser_data([parser_dir], gold_dir, output_dir)
-        result = py_eval.get_parser_data([parser_name], gold_dir, output_dir, diagnostic: true).to_h
+        result = Utils.py_to_rb py_eval.get_parser_data([parser_name], gold_dir, output_dir, diagnostic: true)
         outfile = File.join(Path.export, "evaluation-stats-#{Utils.timestamp}.json")
         File.write outfile, JSON.pretty_generate(result)
         puts "Results written to #{File.realpath outfile}"

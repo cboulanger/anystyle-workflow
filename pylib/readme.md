@@ -2,3 +2,6 @@ Code in this directory has been adapted from Cioffi, Alessia: Code for Convertin
 
 You need a python installation that has been compiled with the "--enable-shared" option and the
 module dependencies stated in [requirement.txt].
+
+You also need the nltk "punkt" package. Here's how to get it:
+https://stackoverflow.com/questions/38916452/nltk-download-ssl-certificate-verify-failed

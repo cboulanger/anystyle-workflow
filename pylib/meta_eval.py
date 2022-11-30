@@ -11,6 +11,7 @@ normalized_levenshtein = NormalizedLevenshtein()
 # input: tuples list with gold standard values (l1), tuples list with output values (l2), type of publication
 # output: boolean stating if the two references are the same
 def compare_meta(l1, l2, type):
+    print(f"Compare meta '{l1}' with '{l2}' in {type}")
     val = False
     new_l1, new_l2 = [], []
 
@@ -90,12 +91,13 @@ def compare_meta(l1, l2, type):
         if check == 1 and res == 0:
             val = True
 
-    # print(val)
+    print(f"{val} ~~~ {reject_l}")
     return val, reject_l
 
 
 # function to compare single output and gold standard values
 def compare_single(t1, t2, type, parser_name):
+    print(f"Compare single '{t1}' with '{t2}' in {type}")
     out_l = []
     # select both the terms singularly
     for t in [t1, t2]:
@@ -120,10 +122,10 @@ def compare_single(t1, t2, type, parser_name):
                 out_l.append(match_content(t, type))
 
     if eval_field({type: [out_l[0]]}, {type: [out_l[1]]}) == 0:
-        # print('True')
+        print('True')
         return True
     else:
-        # print('False')
+        print('False')
         return False
 
 
