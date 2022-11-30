@@ -1,12 +1,13 @@
 # frozen_string_literal: true
 
 require 'fileutils'
+require 'json'
 
 module Workflow
   class Evaluation
     class << self
 
-      def parser_dir
+      def parser_name
         'AnyStyle'
       end
 
@@ -19,7 +20,7 @@ module Workflow
       end
 
       def output_dir_anystyle
-        File.join(output_dir, parser_dir)
+        File.join(output_dir, parser_name)
       end
 
       def create_eval_data
@@ -42,9 +43,11 @@ module Workflow
       def run
         puts 'Running evaluation'
         py_eval = PyCall.import_module('get_evaluation_metrics')
-        result = py_eval.compute_values([parser_dir], gold_dir, output_dir)
+        # result = py_eval.get_parser_data([parser_dir], gold_dir, output_dir)
+        result = py_eval.get_parser_data([parser_name], gold_dir, output_dir, diagnostic: true).to_h
         outfile = File.join(Path.export, "evaluation-stats-#{Utils.timestamp}.json")
         File.write outfile, JSON.pretty_generate(result)
+        puts "Results written to #{File.realpath outfile}"
       end
     end
   end

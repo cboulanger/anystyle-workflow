@@ -14,7 +14,7 @@ end
 
 if ARGV.include? 'evaluate'
   # Evaluation workflow
-  Workflow::Evaluation.create_eval_data
+  #Workflow::Evaluation.create_eval_data
   Workflow::Evaluation.run
 end
 

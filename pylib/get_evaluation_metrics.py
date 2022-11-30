@@ -1,12 +1,12 @@
 from lxml import etree
-import os
+import os, sys
 import json
 from meta_eval import compare_meta, compare_single
 
 
-types_l = [(['article', 'newspaper'], ['date', 'monogr-title', 'analytic-title', 'biblScope_unit_volume', 'biblScope_unit_page']),
-           (['chapter', 'ebook-chapter', 'technical-report-chapter', 'proceeding', 'conference'], ['date', 'analytic-title', 'monogr-title']),
-           (['book', 'ebook', 'manual', 'data-sheet', 'database', 'online-database', 'preprint', 'technical-report', 'software', 'standard', 'preprint'], ['date', 'monogr-title']),
+types_l = [(['article', 'newspaper','article-journal'], ['date', 'monogr-title', 'analytic-title', 'biblScope_unit_volume', 'biblScope_unit_page']),
+           (['chapter', 'ebook-chapter', 'technical-report-chapter', 'proceeding', 'conference', 'paper-conference'], ['date', 'analytic-title', 'monogr-title']),
+           (['book', 'thesis', 'ebook', 'manual', 'data-sheet', 'database', 'online-database', 'preprint', 'technical-report', 'report', 'software', 'standard', 'preprint'], ['date', 'monogr-title']),
            (['forthcoming-article', 'unpublished', 'grey-literature'], ['date', 'monogr-title', 'note']),
            (['patent'], ['date', 'monogr-title', 'idno_type_docNumber']),
            (['series'], ['date', 'series-title', 'monogr-title']),
@@ -258,7 +258,7 @@ def get_metadata(cur_ref, out_l, elem_l):
 
 # in this function we go inside each specific file and extract its information
 def get_single_data(out_file, gs_file, parser_name):
-    print(gs_file)
+    # print(gs_file)
     output = []
     # enter the gs and output xml with etree
     parser = etree.XMLParser(recover=True)  # prova per vedere se il parser semplifica le cose
@@ -295,7 +295,7 @@ def get_single_data(out_file, gs_file, parser_name):
             # return None  # in case no reference is retrieved its values are not counted in the total evaluation
             cur_id = gs_root[0][0][-1].attrib['{http://www.w3.org/XML/1998/namespace}id']
             output.append(int(cur_id[1:]) + 1)
-            print('Get single data: (no ref found)', output)
+            # print('Get single data: (no ref found)', output)
             return output
 
     # looking for the number of correct references
@@ -311,6 +311,8 @@ def get_single_data(out_file, gs_file, parser_name):
             cur_out = refs[count_out]  # current reference in output file
         else:
             cur_out = out_root[0][0][count_out]  # current reference in output file
+        
+        # type 
         cur_type = gs_root[0][0][count_gs].get('type')
 
         if cur_type is None:
@@ -328,11 +330,16 @@ def get_single_data(out_file, gs_file, parser_name):
 
         # check base metadata in gs (in ancillary function); output = dictionary with metadata:value
         vals = [t[1] for t in types_l if cur_type in t[0]]
+
+        if len(vals) == 0:
+            raise ValueError(f"Cannot determine any metadata to compare for type '{cur_type}'.")
+
         # on the basis of the parser, if some metadata cannot be identified exclude them from the list
         if parser_name in pars_except.keys():
             for val in pars_except[parser_name]:
                 if val in vals:
                     vals[0].remove(val)
+
         # check necessary metadata and respective values in gs
         meta_to_compare = get_selected_elements(cur_gs, vals, True, False)
         # check if the respective metadata is present in the output file
@@ -351,7 +358,7 @@ def get_single_data(out_file, gs_file, parser_name):
 
         else:
             temporary_value, not_found = False, None
-            print(cur_gs.get('{http://www.w3.org/XML/1998/namespace}id'))
+            #print(cur_gs.get('{http://www.w3.org/XML/1998/namespace}id'))
 
         # we are inside the file: do necessary data coincide? In case it is so enter
         if temporary_value:
@@ -538,12 +545,12 @@ def get_single_data(out_file, gs_file, parser_name):
         # print(temporary_value, cur_type, gs_l)
 
     output.extend([tot_cor_ref, tot_gs_meta, tot_out_meta, corr_meta, tot_gs_texts, tot_out_texts, corr_texts])
-    print('Get single data: ', output)
+    # print('Get single data: ', output)
     return output
 
 
 # compute the values and add them to the dictionary that will create the json file
-def create_json(file_name, js_dict, values, index, parser_name):
+def create_json(file_name, js_dict, values, index, parser_name) -> dict:
     keys = [('ref', 'references'), ('meta', 'metadata'), ('text', 'content')]
     # create new citation
     # {'file name': file_name, 'values': [{'references': [{'precision': 'x', 'recall': 'y', 'f-score': 'z'}], 'metadata': [{'precision': 'x', 'recall': 'y', 'f-score': 'z'}]}]}
@@ -564,21 +571,13 @@ def create_json(file_name, js_dict, values, index, parser_name):
     # output.update({'values'+str(index): temp})
     output.update({file_name: temp})
     js_dict.update(output)
-
-    '''if index == 55:  # check if it is the last paper in the paper in the papers folder
-        # create last citation and file json
-        json_file = json.dumps(js_dict, indent=2)
-
-        with open(parser_name+'_eval.json', 'w') as out:
-            out.write(json_file)'''
-
-    # print(js_dict.update(output))
-    print(output)
     return js_dict
 
 
 # the objective is to count the values of each file and return them as a list, for input to the prior function
 # second aim is creating a json file for each parser, including all the single papers and topics
+# returns a dict with keys "result", containing a list of lists with the numeric results, and "diagnostic", containing
+# the more verbose file-level diagnostic data
 def get_file_data(path, parser_name, path_to_gs):
     output = [0, 0, 0, 0, 0, 0, 0, 0, 0]  # list that will contain the final values of all the files of the dataset
     missing = []
@@ -621,7 +620,9 @@ def get_file_data(path, parser_name, path_to_gs):
     while n < len(out_list):  # select one by one the papers in the specified parser's output directory
         values = [['ref_tot_gs', 0], ['ref_tot_out', 0], ['ref_tot_corr', 0], ['meta_tot_gs', 0], ['meta_tot_out', 0],
                   ['meta_tot_corr', 0], ['text_tot_gs', 0], ['text_tot_out', 0], ['text_tot_corr', 0]]
-        vals_to_sum = get_single_data(path + '/' + out_list[n], path_to_gs + '/' + gs_list[n], parser_name)
+        out_file = os.path.join(path, out_list[n])
+        gold_file = os.path.join(path_to_gs, gs_list[n])       
+        vals_to_sum = get_single_data(out_file, gold_file, parser_name)
         if vals_to_sum is not None:  # it is true only in case no reference is in the output file
             inner = 0
             while inner < len(vals_to_sum):  # add the values returned by get_single_data to the list of lists
@@ -629,9 +630,8 @@ def get_file_data(path, parser_name, path_to_gs):
                 output[inner] += vals_to_sum[inner]  # update the output list for get_parsr_data
                 inner += 1
 
-            # creare il file json
             # print(values)
-            create_json(os.listdir(path)[n], to_json, values, n, parser_name)
+            to_json = create_json(os.listdir(path)[n], to_json, values, n, parser_name)
         else:
             missing.append(out_list[n])
 
@@ -648,25 +648,35 @@ def get_file_data(path, parser_name, path_to_gs):
         cur_id = gs_root[0][0][-1].attrib['{http://www.w3.org/XML/1998/namespace}id']
         output[0] += int(cur_id[1:]) + 1  # adding this value to output in order to count the
         values[0][1] += int(cur_id[1:]) + 1
-        create_json(file, to_json, values, n, parser_name)
-        print('Get single data: ', [l[1] for l in values])
+        to_json = create_json(file, to_json, values, n, parser_name)
+        # print('Get single data: ', [l[1] for l in values])
         n += 1
 
-    print('Get file data: ', to_json)
+    # print('Get file data: ', to_json)
     if len(missing):
-        print('Missing files: ', missing)
-    print(output)
-    return output
+        sys.stderr.write(f"Missing files: {', '.join(missing)}'")
+    # print(output)
+    return {
+        "result": output,
+        "diagnostic": to_json
+    }
 
-
-def get_parser_data(input_data, path_to_gs, path_to_output):
+# retrieve evaluation data for the given list of parsers
+# parser_list: list of parser names to test, which will be prepended to the output dir path
+# path_to_gs: the path to the directory containing the XML-TEI gold standard
+# path_to_output: path to the directory containing subfolders with the XML-TEI result of the individual parsers
+# diagnostic: if true, return verbose file-level diagnostics instead of the raw numeric data
+def get_parser_data(parser_list, path_to_gs, path_to_output, diagnostic=False):
     output = []
-    for tup in input_data:
-        temp_out = [tup, {}]
+    for parser in parser_list:
+        temp_out = [parser, {}]
         key_l = ['ref_tot_gs', 'ref_tot_out', 'ref_tot_corr', 'meta_tot_gs', 'meta_tot_out', 'meta_tot_corr',
                  'text_tot_gs', 'text_tot_out', 'text_tot_corr']
         # the output of the get_file_data funct is a list of the values to associate to the keys
-        value_l = get_file_data(os.path.join(path_to_output, tup), tup, path_to_gs)
+        file_data = get_file_data(os.path.join(path_to_output, parser), parser, path_to_gs)
+        if diagnostic:
+            return file_data['diagnostic'] 
+        value_l = file_data['result'] 
         # while loop to associate the keys to the respective values
         n = 0
         while n < len(key_l):
@@ -678,11 +688,11 @@ def get_parser_data(input_data, path_to_gs, path_to_output):
 
 
 # compute precison, recall and f-score for each parser + print out a json file with the results
-# input_data: list of parser names to test, which will be prepended to the the gold standard path and the output path
+# parser_list: list of parser names to test, which will be prepended to the output dir path
 # path_to_gs: the path to the directory containing the XML-TEI gold standard
 # path_to_output: path to the directory containing subfolders with the XML-TEI result of the individual parsers
-def compute_values(input_data, path_to_gs, path_to_output):
-    final_data = get_parser_data(input_data, path_to_gs, path_to_output)
+def compute_values(parser_list, path_to_gs, path_to_output):
+    final_data = get_parser_data(parser_list, path_to_gs, path_to_output)
     keys = [('ref', 'references'), ('meta', 'metadata'), ('text', 'content')]
     output = {}
     for parser in final_data:
@@ -695,4 +705,13 @@ def compute_values(input_data, path_to_gs, path_to_output):
             # total_comput['values'].append({key[1]:[{'precision': precision, 'recall': recall, 'f-score': f_score}]})
             total_comput[0].update({key[1]: [{'precision': precision, 'recall': recall, 'f-score': f_score}]})
         output.update({parser[0]: total_comput})
+    return output
+
+def file_level_diagnostics(parser_name, path_to_gs, path_to_output):
+    output = []
+    out_dir = os.path.join(path_to_output, parser_name)
+    for gold_file in os.listdir(path_to_gs):
+        gold_path = os.path.join(path_to_gs, gold_file)
+        out_path = os.path.join(path_to_output, parser_name, gold_file)
+        output.append(get_single_data(out_path, gold_path, parser_name))
     return output
