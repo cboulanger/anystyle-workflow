@@ -7,13 +7,23 @@ module Datamining
   class AnyStyle
     include ::AnyStyle::PDFUtils
 
-    def initialize(finder_model_path = nil, parser_model_path = nil)
-      unless ENV['MODEL_PATH'].nil? || ENV['MODEL_PATH'].empty?
-        finder_model_path ||= File.join(Dir.pwd, ENV['MODEL_PATH'], 'finder.mod').untaint
-        parser_model_path ||= File.join(Dir.pwd, ENV['MODEL_PATH'], 'parser.mod').untaint
+    # it doesn't make sense to use an instance here if the underlying AnyStyle object is a singleton,
+    # this needs to be refactored
+    def initialize(finder_model_path: nil, parser_model_path: nil, use_default_models: false)
+      AnyStyle.load_models(finder_model_path, parser_model_path) unless use_default_models
+    end
+
+    # loads the models. uses MODEL_PATH from the .env file if set. passed arguments override other values
+    def self.load_models(finder_model_path = nil, parser_model_path = nil)
+      if ENV['MODEL_PATH'].nil? || ENV['MODEL_PATH'].empty?
+        finder_model_path ||= File.join(Dir.pwd, 'models', 'finder.mod').untaint
+        parser_model_path ||= File.join(Dir.pwd, 'models', 'parser.mod').untaint
+      else
+        finder_model_path ||= File.join(ENV['MODEL_PATH'], 'finder.mod').untaint
+        parser_model_path ||= File.join(ENV['MODEL_PATH'], 'parser.mod').untaint
       end
-      ::AnyStyle.finder.load_model(finder_model_path) if finder_model_path
-      ::AnyStyle.parser.load_model(parser_model_path) if parser_model_path
+      ::AnyStyle.finder.load_model(finder_model_path)
+      ::AnyStyle.parser.load_model(parser_model_path)
     end
 
     # Given a file path, return the raw references as a newline-separated text

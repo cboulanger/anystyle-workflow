@@ -18,6 +18,29 @@ if ARGV.include? 'evaluate'
   Workflow::Evaluation.run
 end
 
+if ARGV.include? 'check'
+  parser_gold_path = Workflow::Path.gold_anystyle_xml
+  finder_gold_path = Workflow::Path.gold_anystyle_ttx
+
+  puts "Using default model at at #{AnyStyle.parser.model.path}:"
+
+  puts "Checking finder gold at #{finder_gold_path}..."
+  Workflow::Check.run finder_gold_path, outfile_name: "check-default-finder"
+
+  puts "Checking parser gold at #{parser_gold_path} ..."
+  Workflow::Check.run parser_gold_path, outfile_name: "check-default-parser"
+
+  Datamining::AnyStyle.load_models
+  puts "Using custom model at at #{AnyStyle.parser.model.path}:"
+
+  puts "Checking finder gold at #{finder_gold_path}..."
+  Workflow::Check.run finder_gold_path, outfile_name: "check-custom-finder"
+
+  puts "Checking parser gold at #{parser_gold_path}..."
+  Workflow::Check.run parser_gold_path, outfile_name: "check-custom-parser"
+
+end
+
 # Reconciliation/linking workflow
 # Workflow::Workflow.match_references
 

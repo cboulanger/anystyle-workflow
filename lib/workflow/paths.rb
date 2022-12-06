@@ -19,11 +19,18 @@ module Workflow
         File.join(base, '0-gold-anystyle-json').untaint
       end
 
-      # path to the directory containing reference gold standard in
-      # AnyStyle's native XML format
+      # path to the directory containing reference parser gold standard in
+      # XML format
       # @return [String]
       def gold_anystyle_xml
         File.join(base, '0-gold-anystyle-xml').untaint
+      end
+
+      # path to the directory containing reference finder gold standard in
+      # the '.ttx' format
+      # @return [String]
+      def gold_anystyle_ttx
+        File.join(base, '0-gold-anystyle-ttx').untaint
       end
 
       # path to the directory containing reference gold standard in

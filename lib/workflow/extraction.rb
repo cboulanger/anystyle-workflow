@@ -7,7 +7,7 @@ module Workflow
       # @param [String] dir_path
       # @param [Boolean] overwrite
       def pdf_to_txt(dir_path = Path.pdf, overwrite: false)
-        anystyle = Datamining::AnyStyle.new('./models/finder.mod', './models/parser.mod')
+        anystyle = Datamining::AnyStyle.new
         files = Dir.glob(File.join(dir_path, '*.pdf')).map(&:untaint)
         progressbar = ProgressBar.create(title: 'Extracting text from PDF:',
                                          total: files.length,
@@ -27,7 +27,7 @@ module Workflow
       # @param [Boolean] output_intermediaries If true, write intermediary file formats to disk for debugging purposes, will slow down extraction considerably
       # @param [Boolean] overwrite If true, overwrite existing files
       def txt_to_refs(overwrite: false, output_intermediaries: false)
-        anystyle = Datamining::AnyStyle.new('./models/finder.mod', './models/parser.mod')
+        anystyle = Datamining::AnyStyle.new
         files = Dir.glob(File.join(Path.txt, '*.txt')).map(&:untaint)
         progressbar = ProgressBar.create(title: 'Extracting references from text:',
                                          total: files.length,
