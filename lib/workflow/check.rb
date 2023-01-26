@@ -58,7 +58,7 @@ module Workflow
             end
           end
           rows.append ['Sum', *sums]
-          rows.append ['Mean', *sums.map { |v| v / count }]
+          rows.append ['Mean', *sums.map { |v| (v / count).to_f }]
         end
         outfile_name ||= "check-stats-#{Utils.timestamp}"
         outfile_path = "#{File.join(Path.export, outfile_name)}.csv"
@@ -72,6 +72,16 @@ module Workflow
           AnyStyle.finder.check path.to_s.untaint
         when '.xml'
           AnyStyle.parser.check path.to_s.untaint
+        end
+      end
+
+      # takes a filepath (string) to a gold standard file and returns the labeled result as XML or ttx,
+      def relabel(path)
+        case File.extname(path)
+        when '.ttx'
+          AnyStyle.finder.label(AnyStyle.finder.prepare(path, tagged: true)).to_s(tagged:true)
+        when '.xml'
+          AnyStyle.parser.label(AnyStyle.parser.prepare(path, tagged: true)).to_xml
         end
       end
     end
