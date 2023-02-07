@@ -5,12 +5,9 @@ require 'json'
 require 'csv'
 
 module Workflow
-
   class Path
     class << self
-      attr_accessor :base
-      attr_accessor :tmp
-
+      attr_accessor :base, :tmp, :models
 
       # path to the directory containing reference gold standard in
       # AnyStyle's native JSON format
@@ -127,10 +124,10 @@ module Workflow
       def export
         File.join(base, '5-export').untaint
       end
-
     end
   end
 end
 
 Workflow::Path.base = File.join(File.dirname($PROGRAM_NAME), 'data').untaint
 Workflow::Path.tmp = File.join(File.dirname($PROGRAM_NAME), 'tmp').untaint
+Workflow::Path.models = File.join(File.dirname($PROGRAM_NAME), 'models').untaint
