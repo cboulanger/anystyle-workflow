@@ -1,3 +1,5 @@
+#!/usr/bin/env ruby
+
 # frozen_string_literal: true
 
 require './lib/bootstrap'
@@ -22,31 +24,37 @@ cleanup_paths = [
 ]
 
 HELP = \
-  <<~TEXT.freeze
-    Usage:
-    run-workflow.rb <command>
-    Commands:
-    extract
-        [--model-dir /to/model/dir]
-        [--write-files]                   write all intermediary files for inspection purposes
-        [--overwrite]
-        [--use-(parser|finder)-gold-from /path/to/gold]
-                                          overwrite output files with existing gold files of the same
-                                          name to improve quality
-        --from-(text|pdf) /to/text/dir'   Use either text or pdf as source - must be last argument
-    check
-        [--include-default]
-        [--fix]                           add missing end-of-line spaces
-        [--write-files]                   write the re-labelled gold files to its output folder
-        [--parser|--finder]               check only the given model, both if omitted
-        [--gold-dir /path/to/gold']       path to the dir containing the gold to be checked, must be last argument
-                                          if omitted, the data/0-gold-* folders are used
-    evaluate
+  <<~TEXT
+      Usage:
+      run-workflow <command>
+      Commands:
+      extract
+          [--model-dir /to/model/dir]
+          [--write-files]                   write all intermediary files for inspection purposes
+          [--overwrite]
+          [--use-(parser|finder)-gold-from /path/to/gold]
+                                            overwrite output files with existing gold files of the same
+                                            name to improve quality
+          --from-(text|pdf) /to/text/dir'   Use either text or pdf as source - must be last argument
 
-    General parameters:
-    --verbose                             output additional information
-    --clean                               clean output directories before running command
+      stats                                 Generate a CSV file with data on the extraction results and on other
+                                            available metadata from vendors listed in 3-metadata/vendors.json
 
+      check
+          [--include-default]
+          [--fix]                           add missing end-of-line spaces
+          [--write-files]                   write the re-labelled gold files to its output folder
+          [--parser|--finder]               check only the given model, both if omitted
+          [--gold-dir /path/to/gold']       path to the dir containing the gold to be checked, must be last argument
+                                            if omitted, the data/0-gold-* folders are used
+
+      General parameters:
+      --verbose                             output additional information
+      --clean                               clean output directories before running command
+
+    export
+        [--to-wos /path/to/file.txt]        Exports to ISI/WoS tagged file format (default)
+        [--no-compact]                      Do not remove empty fields (if required by importer)
   TEXT
 
 puts HELP if ARGV.include?('--help') || ARGV.length.zero?
@@ -73,16 +81,16 @@ if ARGV.include? 'extract'
 
   arg_name = '--model-dir'
   model_dir = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
-  
+
   if ARGV.include? '--verbose'
     puts \
-    <<~TEXT.freeze
-    pdf_dir:          #{pdf_dir}
-    text_dir:         #{text_dir}
-    parser_gold_dir:  #{parser_gold_dir}
-    finder_gold_dir:  #{finder_gold_dir}
-    model_dir:        #{model_dir}
-    TEXT
+      <<~TEXT.freeze
+        pdf_dir:          #{pdf_dir}
+        text_dir:         #{text_dir}
+        parser_gold_dir:  #{parser_gold_dir}
+        finder_gold_dir:  #{finder_gold_dir}
+        model_dir:        #{model_dir}
+      TEXT
   end
 
   if !pdf_dir.nil?
@@ -100,6 +108,10 @@ if ARGV.include? 'extract'
     finder_gold_dir:,
     verbose: ARGV.include?('--verbose')
   )
+  Workflow::Extraction.write_statistics
+end
+
+if ARGV.include? 'stats'
   Workflow::Extraction.write_statistics
 end
 
@@ -166,17 +178,21 @@ if ARGV.include? 'check'
   end
 end
 
-if ARGV.include? 'evaluate'
-  # Evaluation workflow
-  # Workflow::Evaluation.create_eval_data
-  Workflow::Evaluation.run
+if ARGV.include? 'export'
+  target = 'wos'
+  # arg_name = '--to-wos'
+  # export_file_path = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
+  Workflow::Export.public_send("to_#{target}",
+                               verbose: ARGV.include?('--verbose'),
+                               compact: !ARGV.include?('--no-compact'))
 end
 
 # Reconciliation/linking workflow
 # Workflow::Workflow.match_references
-
+# Workflow::Evaluation.create_eval_data
+# Workflow::Evaluation.run
 # Export workflow
 # Retrieve metadata for the files to be extracted
 # Workflow::Reconciliation.generate_csl_metadata datasources: ['openalex']
-# Workflow::Workflow.export_to_wos
+#
 # Workflow::Workflow.export_to_neo4j

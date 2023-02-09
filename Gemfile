@@ -12,3 +12,13 @@ gem 'require_all', '~> 3.0'
 gem 'rubocop', group: 'development'
 gem 'ruby-progressbar', '~> 1.11'
 gem 'serrano'
+
+gem "logging", "~> 2.3"
+
+gem "namae", "~> 1.1"
+
+gem "damerau-levenshtein", "~> 1.3"
+
+gem "matrix", "~> 0.4.2"
+
+gem "text", "~> 1.3"

@@ -9,7 +9,7 @@ module Datasource
       @base_url = 'https://openlibrary.org'
       
       def query(name, title, date)
-        name = Datasource::Utils.author_lastname(name)
+        name = Datasource::Utils.author_name_family(name)
         title_keywords = Datasource::Utils.title_keywords(title)
         lookup_string = "q=author:\"#{name}\" title:\"#{title_keywords}\" publish_year:#{date}"
         url = @base_url + '/search.json?' + ERB::Util.url_encode(lookup_string)

@@ -52,7 +52,7 @@ module Datasource
               },
               'issue': row['Issue'],
               'issued': {
-                'date-parts': [[row['PubYear']]]
+                'date-parts': [row['PubYear']]
               },
               'page': row['Pagination'],
               'reference': parse_cited_references(row['Cited references']),

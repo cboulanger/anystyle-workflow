@@ -6,7 +6,7 @@ module Datasource
   class Crossref
     class << self
       def query(name, title, date)
-        name = Datasource::Utils.author_lastname(name)
+        name = Datasource::Utils.author_name_family(name)
         title_keywords = Datasource::Utils.title_keywords(title)
         args = {
           query_author: name,

@@ -1,170 +1,122 @@
+# frozen_string_literal: true
+
 module Workflow
   class Export
     class << self
+      include Format::CSL
 
-
-      def filter_cited_items(cited_items)
-        cited_items.reject do |item|
-          item['title'].nil? || item['issued'].nil? ||
-            !(item['author'] || item['editor']) ||
-            (item['author'] || item['editor']).any? { |c| c['given'] && (c['family'].nil? || c['family'].empty?) }
+      def get_item_by_doi(doi, verbose: false)
+        key = doi.sub('/', '_')
+        if @vendor_data.nil?
+          @vendor_data = ::Datasource::Utils.get_vendor_data
+          @vendor_data['anystyle'] = {}
         end
+
+        if @vendor_data.dig('anystyle', key, 'reference').nil?
+          file_path = File.join(::Workflow::Path.csl, "#{key}.json")
+          # puts " - Anystyle: Looking for references for #{doi} in #{file_path}" if verbose
+          if File.exist? file_path
+            cited_items = JSON.load_file(file_path)
+            filtered_items = filter_items(cited_items)
+            if verbose
+              puts " - Anystyle: Found #{cited_items.length}, ignored #{cited_items.length - filtered_items.length} items"
+            end
+            @vendor_data['anystyle'][key] = {
+              'reference' => filtered_items
+            }
+          end
+        end
+
+        # merge available reference data
+        item = @vendor_data.dig('crossref', key)
+        references = item['reference'] || []
+        @vendor_data.each_key do |vendor|
+          if vendor == 'crossref'
+            if references.length.positive?
+              references.map! do |ref|
+                if ref['unstructured'].nil? || ref['DOI'].nil?
+                  ref
+                else
+                  m = ref['unstructured'].match(/^(?<author>.+) \((?<year>\d{4})\) (?<title>[^.]+)\./)
+                  return ref if m.nil?
+
+                  {
+                    'author' => Namae.parse(m[:author]).map(&:to_h),
+                    'issued' => [{ 'date-parts' => [m[:year]] }],
+                    'title' => m[:title],
+                    'DOI' => ref['DOI']
+                  }
+                end
+              end
+            end
+            next
+          end
+
+          refs = @vendor_data.dig(vendor, key, 'reference')
+          next unless refs.is_a? Array
+
+          refs.each { |ref| ref['source'] = vendor }
+          references += refs
+          puts " - #{vendor}: added #{refs.length} references" if verbose && refs.length.positive?
+        end
+        item['reference'] = remove_duplicates(references)
+        item
       end
 
-      def read_dimensions_data
-        files = Dir.glob('data/0-metadata/Dimensions-*.csv').map(&:untaint)
-        data = []
-        files.each do |file_path|
-        end
+      # given a list of csl hashes, remove redundant entries with the least amount of information
+      def remove_duplicates(item_list)
+        # item_list = filter_items(item_list)
+        # titles = item_list.map { |item| item['title'] }
+        # puts JSON.pretty_generate(group_by_similarity(titles))
+        item_list
       end
 
-      # given a unique, resolvable id (currently, DOI and ISBN), return cited items as CSL-JSON
-      # from the sources available in this workflow
-      def get_cited_items(unique_id)
-        case unique_id
-        when /^978/, /^isbn:/i
-          nil
-        when /^10\./, /^doi:/i
-          # extracted refs
-          file_path = "data/3-refs/#{unique_id.sub('/', '_')}"
-          items = if File.exist? file_path
-                    filter_cited_items(JSON.load_file(file_path))
-                  else
-                    {}
-                  end
-
-        end
-      end
-
-      def export_to_wos
-        files = Dir.glob(::Workflow::Config.refs_glob).map(&:untaint)
-        progressbar = ProgressBar.create(title: 'Exporting to WOS file:',
-                                         total: files.length,
-                                         **::Workflow::Config.progress_defaults)
-        metadata_file = File.join('data/0-metadata', 'crossref.json')
-        generate_csl_metadata unless File.exist? metadata_file
-        metadata = JSON.load_file(metadata_file)
-        wosexport_file_path = File.join('data', '5-export', "wos-export-#{timestamp}.txt")
-        Export::Wos.write_header(wosexport_file_path)
-        files.each do |file_path|
-          progressbar.increment
-          file_name = File.basename(file_path, '.json')
-          item = metadata[file_name]
-          next if item.nil?
-
-          cited_items = get_cited_items(item['DOI'])
-          Export::Wos.append_record(wosexport_file_path, item, cited_items)
-        end
-      end
-
-      def export_to_neo4j
-        Datasource::Neo4j.connect
-        files = Dir.glob(File.join('data', '3-csl', '*.json')).map(&:untaint)
-        progressbar = ProgressBar.create(title: 'Matching references:',
-                                         total: files.length,
-                                         **::Workflow::Config.progress_defaults)
-        files.each do |file_path|
-          progressbar.increment
-          file_name = File.basename(file_path, '.json')
-          # work = Datasource::Utils.fetch_metadata_by_identifier(file_name, datasources: ['neo4j']) # returns a Work or {family, date, title,doi}
-          case work
-          when Work
-            family = work.first_creator_name
-            title = work.title
-            date = work.date
-          when Hash
-            family = work[:family]
-            title = work[:title]
-            date = work[:date]
+      # https://stackoverflow.com/a/41941713
+      def group_by_similarity(strings, max_distance: 5, compensation: 5)
+        result = {}
+        strings.each do |s|
+          s.downcase!
+          similar = result.keys.select do |key|
+            len = [key.length, s.length].min
+            Text::Levenshtein.distance(key.downcase[..len],
+                                       s.downcase[..len]) < max_distance + (s.length / compensation)
+          end
+          if similar.any?
+            result[similar.first].append(s)
           else
-            $logger.warn("Cannot find metadata for #{file_name}")
-            next
+            result.merge!({ s => [] })
           end
-
-          if (work.is_a? Work) && work.imported
-            logger.info "#'{family} (#{date}) #{title[0, 30]}' has alread been imported"
-            next
-          end
-
-          # create an entry with only date and title
-          citing_work = Work.find_or_create_by({ date:, title: })
-          logger.info "#{family} (#{date}): #{title}:"
-
-          # save creator
-          citing_creator = Creator.find_or_create_by(family:)
-          CreatorOf.new(from_node: citing_creator, to_node: citing_work, role: :author)
-          citing_work.save
-
-          # save references
-          refs = JSON.load_file(file_path)
-          refs.each do |w|
-            creator = if w['editor'].length.positive?
-                        w['editor']
-                      else
-                        w['author']
-                      end
-            title = w['title']
-            date = w['date']
-            type = w['type']
-            name = creator.first['family'] || creator.first['literal']
-            logger.warn "  => #{name}, #{title[0, 30]} #{date}: "
-            if name.nil?
-              logger.warn '    - Could not find author, skipping'
-              next
-            end
-
-            # create cited item
-            cited_work = Work.find_or_create_by(title:, date:)
-            cited_work.note = w.to_json
-            cited_work.type = type
-            cited_work.save
-            Citation.create(from_node: citing_work, to_node: cited_work)
-
-            # link authors
-            creator.each do |c|
-              family = c['family']
-              given = c['given']
-              next if family.nil?
-
-              cited_creator = Creator.find_or_create_by(family:, given:)
-              CreatorOf.create(from_node: cited_creator, to_node: cited_work, role: :author)
-              logger.info "    - Linked cited author #{cited_creator.display_name}"
-            end
-
-            # link container/journal
-            book = nil
-            journal = nil
-            container_title = w['container-title']&.first
-            unless container_title.nil?
-              if w['type'] == 'article-journal'
-                journal = Journal.find_or_create_by(title: container_title)
-                ContainedIn.create(from_node: cited_work, to_node: journal)
-                logger.info "    - Linked journal #{journal.title}"
-              else
-                book = EditedBook.find_or_create_by(title: container_title, date:, type: 'book')
-                ContainedIn.create(from_node: cited_work, to_node: book)
-                logger.info "    - Linked edited book #{book.title}"
-              end
-            end
-            next unless journal.nil?
-
-            # link editors to work
-            w['editor']&.each do |e|
-              citing_creator = Creator.find_or_create_by(family: e['family'], given: e['given'])
-              citing_creator.save
-              if book.nil?
-                CreatorOf.create(from_node: citing_creator, to_node: cited_work, role: :editor)
-                logger.info "    - Linked editor #{citing_creator.display_name} to work #{cited_work.display_name}"
-              else
-                CreatorOf.create(from_node: citing_creator, to_node: book, role: :editor)
-                logger.info "    - Linked editor #{citing_creator.display_name} to container #{cited_work.display_name}"
-              end
-            end
-          end
-          citing_work.imported = true
-          citing_work.save
-          # break
         end
+        result
+      end
+
+      def to_wos(export_file_path: nil, source_dir: Path.csl, verbose: false, compact: true)
+        files = Dir.glob(File.join(source_dir, '*.json')).map(&:untaint)
+        progressbar = ProgressBar.create(title: 'Exporting to ISI/WoS-tagged file:',
+                                         total: files.length,
+                                         **::Workflow::Config.progress_defaults)
+
+        # start export
+        export_file_path ||= File.join(Path.export, "export-wos-#{Utils.timestamp}.txt")
+        ::Export::Wos.write_header(export_file_path)
+        num_refs = 0
+        counter = 0
+        files.each do |file_path|
+          progressbar.increment unless verbose
+          file_name = File.basename(file_path, '.json')
+          puts "Processing #{file_name}.json:" if verbose
+          doi = file_name.sub('_', '/')
+          item = get_item_by_doi(doi, verbose:)
+          references = item['reference']
+          n = references&.length || 0
+          num_refs += n
+          puts " - Found #{n} references" if verbose
+          ::Export::Wos.append_record(export_file_path, item, compact:, add_ref_source: false)
+          counter += 1
+          #break if counter.positive?
+        end
+        progressbar.finish unless verbose
+        puts "Exported #{num_refs} references from #{files.length} files."
       end
     end
   end

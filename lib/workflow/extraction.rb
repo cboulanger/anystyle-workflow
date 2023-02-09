@@ -125,7 +125,9 @@ module Workflow
         end
       end
 
-      def write_statistics
+
+
+      def write_statistics(verbose: false)
         files = Dir.glob(File.join(Path.anystyle_json, '*.json')).map(&:untaint)
         progressbar = ProgressBar.create(title: 'Collecting extraction statistics:',
                                          total: files.length,
@@ -133,36 +135,25 @@ module Workflow
         outfile = File.join(Path.export, "extraction-stats-#{Utils.timestamp}.csv")
         stats = []
         columns = %w[file journal year a_all a_rejected a_potential]
-
         # vendor data
-        vendors = %w[crossref dimensions openalex wos]
+        vendor_cache = ::Datasource::Utils.get_vendor_data
+        vendors = vendor_cache.keys
         columns += vendors
-        vendor_cache = {}
-        vendors.each do |vendor|
-          vendor_path = File.join Path.metadata, "#{vendor}.json"
-          vendor_cache[vendor] = (JSON.load_file vendor_path if File.exist? vendor_path)
-        end
         crossref_meta = vendor_cache['crossref']
         raise 'CrossRef metadata is required' unless crossref_meta
 
         stats.append columns
         files.each do |file_path|
-          progressbar.increment
+          progressbar.increment unless verbose
           file_name = File.basename(file_path, '.json')
           begin
-            year = crossref_meta[file_name]['issued']['date-parts'].first.first
-            # this is not generalizable
-            journal = case crossref_meta[file_name]['container-title']
-                      when /^Zeitschrift/
-                        'zfrsoz'
-                      else
-                        'jls'
-                      end
+            year = ::Format::CSL.get_csl_year(crossref_meta[file_name])
+            journal_abbrv = crossref_meta[file_name]['container-title'].scan(/\S+/).map { |w| w[0] }.join()
           rescue StandardError
-            $logger.error "Problem parsing year/journal for #{file_name}"
+            puts "Warning: Problem parsing year/journal for #{file_name}" if verbose
             next
           end
-          row = [file_name, journal, year]
+          row = [file_name, journal_abbrv, year]
           # all found from anystyle json
           all = JSON.load_file(file_path)
           row.append(all.length)
@@ -179,7 +170,6 @@ module Workflow
             refs = refs['reference'] if refs.is_a? Hash
             row.append(refs.is_a?(Array) ? refs.length : 0)
           end
-
           # write row
           stats.append(row)
         end
