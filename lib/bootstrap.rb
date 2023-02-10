@@ -19,5 +19,5 @@ require './lib/datamining/anystyle'
 require './lib/matcher'
 require './lib/export/wos'
 
-# workflow
+require_all './lib/nlp/*.rb'
 require_all './lib/workflow/*.rb'

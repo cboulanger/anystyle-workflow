@@ -22,3 +22,5 @@ gem "damerau-levenshtein", "~> 1.3"
 gem "matrix", "~> 0.4.2"
 
 gem "text", "~> 1.3"
+
+gem "summarize", "~> 1.0"
