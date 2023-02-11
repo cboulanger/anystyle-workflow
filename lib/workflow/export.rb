@@ -137,16 +137,26 @@ module Workflow
       #       missing fields
       # @param [String] text_dir Optional path to directory containing the original .txt files. Needed if abstracts and
       #       topics are missing in the metadata and should be generated automatically from the text
-      def to_wos(export_file_path: nil, source_dir: Path.csl, verbose: false, compact: true, text_dir:, remove_list:)
+      # @param [Array] remove_list
+      # @param [String (frozen)] encoding
+      def to_wos(export_file_path: nil,
+                 source_dir: Path.csl,
+                 verbose: false,
+                 compact: true,
+                 text_dir:,
+                 remove_list:,
+                 encoding:"utf-8")
+
         files = Dir.glob(File.join(source_dir, '*.json')).map(&:untaint)
+        export_file_path ||= File.join(Path.export, "export-wos-#{Utils.timestamp}.txt")
+        json_dump_path = File.join(Path.export, "last-export-dump.csl.json")
+        items = []
         progressbar = ProgressBar.create(title: 'Exporting to ISI/WoS-tagged file:',
                                          total: files.length,
                                          **::Workflow::Config.progress_defaults)
 
-        export_file_path ||= File.join(Path.export, "export-wos-#{Utils.timestamp}.txt")
-
         # start export
-        ::Export::Wos.write_header(export_file_path)
+        ::Export::Wos.write_header(export_file_path, encoding:)
         num_refs = 0
         counter = 0
 
@@ -171,12 +181,15 @@ module Workflow
           n = references&.length || 0
           num_refs += n
           puts " - Found #{n} references" if verbose
-          ::Export::Wos.append_record(export_file_path, item, compact:, add_ref_source: false)
+          ::Export::Wos.append_record(export_file_path, item, compact:, add_ref_source: false, encoding:)
+          items.append(item)
           counter += 1
-          #break if counter.positive?
+          # break if counter.positive?
         end
         progressbar.finish unless verbose
         puts "Exported #{num_refs} references from #{files.length} files to #{export_file_path}."
+        File.write(json_dump_path, JSON.pretty_generate(items))
+        puts "In addition, dumped JSON data of that export to #{json_dump_path}."
       end
     end
   end
