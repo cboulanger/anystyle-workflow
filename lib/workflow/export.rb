@@ -7,123 +7,148 @@ module Workflow
       include Format::CSL
       include Nlp
 
+      # enums
+      MERGE_POLICIES = [
+        # validate using author / year comparison
+        # VALIDATE_METHOD_AUTHOR_YEAR = 'validate_method_author_year',
+        # add all missing references found in the vendor data
+        ADD_MISSING_ALL = 'add_missing_all',
+        # add missing references found in open access vendor data (excluding WoS, for example)  NOT IMPLEMENTED
+        ADD_MISSING_FREE = 'add_missing_open',
+        # Add unvalidated anystyle referencex
+        ADD_UNVALIDATED = 'add_unvalidated',
+        # simply add all vendor data, this leads to lots of duplicated
+        DUMP_ALL = 'dump_all'
+      ]
+
       # Given a DOI, merge available data into a CSL hash (having a "reference" field containing the cited
-      # references as CSL items)
+      # references as CSL items). Anystyle references will be matched against the vendor references.
+      # If one matches, reference will have a custom/validated-by field, which is a hash, having the
+      # vendor name as key and the reference that validates the anystyle data as value
       # @param [String] doi
       # @param [Boolean] verbose
-      def get_csl_metadata(doi, verbose: false)
-
-        # the key is the DOI with slashes substituted by underscore, which is also the filename of the
-        # input and output files of our workflow
-        key = doi.sub('/', '_')
+      # @param [Export.POLICIES[]] policies
+      def merge_and_validate(doi, verbose: false, policies: [ADD_MISSING_ALL, ADD_UNVALIDATED])
 
         # load all available metadata in memory except the anystyle data, which will be loaded on demand
         if @vendor_data.nil?
           @vendor_data = ::Datasource::Utils.get_vendor_data
-          @vendor_data['anystyle'] = {}
         end
 
-        # load anystyle data for the requested item
-        if @vendor_data.dig('anystyle', key, 'reference').nil?
-          file_path = File.join(::Workflow::Path.csl, "#{key}.json")
-          # puts " - Anystyle: Looking for references for #{doi} in #{file_path}" if verbose
-          if File.exist? file_path
-            cited_items = JSON.load_file(file_path)
-            # filter out unusable data
-            filtered_items = filter_items(cited_items)
-            if verbose
-              puts " - Anystyle: Found #{cited_items.length}, ignored #{cited_items.length - filtered_items.length} items"
-            end
-            @vendor_data['anystyle'][key] = {
-              'reference' => filtered_items
-            }
-          end
-        end
+        file_name = doi.sub('/', '_')
 
-        # use crossref data as base
-        item = @vendor_data.dig('crossref', key)
+        # lookup with crossref metadata by doi (or file name, deprecated)
+        item = @vendor_data.dig('crossref', doi) || @vendor_data.dig('crossref', file_name)
         if item.nil?
-          raise "No metadata exists for #{doi}"
+          raise "No metadata exists for #{doi}, cannot continue."
+        else
+          item = Datasource::Crossref.fix_crossref_item(item)
         end
 
-        references = item['reference'] || []
+        # load anystyle references for the requested item
+        anystyle_references = Datasource::Anystyle.get_references_by_doi(doi)
+        references = []
 
-        # remove xml tags from crossref abstract field
-        item['abstract'].gsub!(/<[^<]+?>/, '') if item['abstract'].is_a? String
-
-        # parse crossref's 'reference[]/unstructured' fields into author, date and title information
-        if references.length.positive?
-          references.map! do |ref|
-            if ref['unstructured'].nil? || ref['DOI'].nil?
-              ref
-            else
-              m = ref['unstructured'].match(/^(?<author>.+) \((?<year>\d{4})\) (?<title>[^.]+)\./)
-              return ref if m.nil?
-
-              {
-                'author' => Namae.parse(m[:author]).map(&:to_h),
-                'issued' => [{ 'date-parts' => [m[:year]] }],
-                'title' => m[:title],
-                'DOI' => ref['DOI']
-              }
-            end
-          end
-        end
-
-        # merge available data from other vendors
+        # process available data from vendors
         @vendor_data.each_key do |vendor|
-          next if vendor == 'crossref'
 
-          vendor_item = @vendor_data.dig(vendor, key)
-          next if vendor_item.nil?
+          vendor_item = @vendor_data.dig(vendor, doi) || @vendor_data.dig(vendor, file_name)
 
-          # add abstract if no crossref abstract exists
-          item['abstract'] ||= vendor_item['abstract'] if vendor_item['abstract'].is_a? String
+          if vendor_item.nil?
+            puts " - No data for #{doi} in #{vendor}" if verbose
+            next
+          end
 
-          # add custom fields
-          if vendor_item['custom'].is_a? Hash
-            item['custom'] = {} if item['custom'].nil?
-            item['custom'].merge! vendor_item['custom']
+          # move non-standard fields into "custom" field
+          item[FIELD_CUSTOM] = {} if item[FIELD_CUSTOM].nil?
+          case vendor
+          when "crossref"
+            # move cited-by-count to custom
+            item[FIELD_CUSTOM][Datasource::Crossref::TIMES_CITED] = item[Datasource::Crossref::TIMES_CITED_ORIG]
+            # move authors affiliations to custom
+            affiliations = get_csl_creator_list(item).map { |creator|
+              creator.dig('affiliation', 0, 'name')
+            }.reject { |item| item.nil? }
+            item[FIELD_CUSTOM][Datasource::Crossref::AUTHORS_AFFILIATIONS] = affiliations if affiliations.length.positive?
+          when "openalex"
+            # move authors affiliations to custom
+            affiliations = get_csl_creator_list(item).map { |creator|
+              creator.dig(Datasource::OpenAlex::AUTHORS_AFFILIATION_LITERAL)
+            }.reject { |item| item.nil? }
+            item[FIELD_CUSTOM][Datasource::OpenAlex::AUTHORS_AFFILIATIONS] = affiliations if affiliations.length.positive?
+          end
+
+          if vendor != "crossref"
+            # add abstract if no crossref abstract exists
+            item['abstract'] ||= vendor_item['abstract'] if vendor_item['abstract'].is_a? String
+
+            # add custom fields
+            item[FIELD_CUSTOM].merge! vendor_item[FIELD_CUSTOM]
           end
 
           # add reference data
-          refs = @vendor_data.dig(vendor, key, 'reference')
-          next unless refs.is_a? Array
+          vendor_refs = vendor_item['reference'] || []
 
-          refs.each { |ref| ref['source'] = vendor }
-          references += refs
-          puts " - #{vendor}: added #{refs.length} references" if verbose && refs.length.positive?
+          if policies.include?(DUMP_ALL)
+            vendor_refs.each { |ref| ref['source'] = vendor }
+            anystyle_references += vendor_refs
+            puts " - #{vendor}: added #{vendor_refs.length} references" if verbose && vendor_refs.length.positive?
+          else
+
+            # match each anystyle reference against all vendor references since we cannot be sure they are in the same order
+            # this can certainly be optimized but is good enough for now
+            num_anystyle_refs = 0
+            num_vendor_refs = 0
+            num_validated_refs = 0
+            vendor_refs.each do |vendor_ref|
+              vauthor, vyear = get_csl_author_year_title vendor_ref, downcase: true
+              next if vauthor.nil? || vauthor.strip.empty?
+              matched = false
+              anystyle_references.each do |ref|
+                author, year = get_csl_author_year_title ref, downcase: true
+                # validation is done by author / year exact match. this will produce some false positives/negatives
+                if author == vauthor && year == vyear
+                  ref[FIELD_CUSTOM] = {} if ref[FIELD_CUSTOM].nil?
+                  ref[FIELD_CUSTOM][CUSTOM_VALIDATED_BY] = {} if ref[FIELD_CUSTOM][CUSTOM_VALIDATED_BY].nil?
+                  ref[FIELD_CUSTOM][CUSTOM_VALIDATED_BY].merge!({ vendor => vendor_ref })
+                  # add only if reference hasn't been validated already
+                  unless ref[FIELD_CUSTOM][CUSTOM_VALIDATED_BY].keys.count > 1
+                    references.append(ref)
+                    puts " - anystyle: Added #{author} #{year} (validated by #{vendor})" if verbose
+                    num_anystyle_refs += 1
+                  end
+                  num_validated_refs += 1
+                  matched = true
+                end
+              end
+              if matched == false
+                if policies.include?(ADD_MISSING_ALL) || (policies.include?(ADD_MISSING_FREE) && vendor != "wos")
+                  references.append(vendor_ref)
+                  puts " - #{vendor}: Added #{vauthor} (#{vyear}) " if verbose
+                  num_vendor_refs += 1
+                end
+              end
+            end
+          end
+          puts " - #{vendor}: validated #{num_validated_refs} anystyle references (of which #{num_anystyle_refs} were added), and added #{num_vendor_refs} missing references" if verbose && num_vendor_refs.positive?
         end
-        item['reference'] = remove_duplicates(references)
+        num_vendor_refs = references.length
+
+        if policies.include?(ADD_UNVALIDATED)
+          anystyle_references.each do |ref|
+            unless ref.dig(FIELD_CUSTOM, CUSTOM_VALIDATED_BY)&.keys&.length&.positive?
+              author, year = get_csl_author_year_title(ref, downcase: true)
+              next if author.nil? || author.empty?
+              puts " - anystyle: Added unvalidated #{author} #{year}" if verbose
+              references.append(ref)
+            end
+          end
+          puts " - added #{references.length - num_vendor_refs} unvalidated anystyle references" if verbose
+        end
+
+        item['reference'] = references
         # return result
         item
-      end
-
-      # given a list of csl hashes, remove redundant entries with the least amount of information
-      def remove_duplicates(item_list)
-        # item_list = filter_items(item_list)
-        # titles = item_list.map { |item| item['title'] }
-        # puts JSON.pretty_generate(group_by_similarity(titles))
-        item_list
-      end
-
-      # https://stackoverflow.com/a/41941713
-      def group_by_similarity(strings, max_distance: 5, compensation: 5)
-        result = {}
-        strings.each do |s|
-          s.downcase!
-          similar = result.keys.select do |key|
-            len = [key.length, s.length].min
-            Text::Levenshtein.distance(key.downcase[..len],
-                                       s.downcase[..len]) < max_distance + (s.length / compensation)
-          end
-          if similar.any?
-            result[similar.first].append(s)
-          else
-            result.merge!({ s => [] })
-          end
-        end
-        result
       end
 
       # Generates a tagged file with the metadata and reference data that mimics a Web of Science export file and can
@@ -145,12 +170,13 @@ module Workflow
                  compact: true,
                  text_dir:,
                  remove_list:,
-                 encoding:"utf-8")
+                 encoding: "utf-8",
+                 limit:)
 
         files = Dir.glob(File.join(source_dir, '*.json')).map(&:untaint)
         export_file_path ||= File.join(Path.export, "export-wos-#{Utils.timestamp}.txt")
-        json_dump_path = File.join(Path.export, "last-export-dump.csl.json")
-        items = []
+        item_cache_path = File.join(Path.tmp, "metadata_cache.json")
+        item_cache = File.exist?(item_cache_path) ? JSON.load_file(item_cache_path) : {}
         progressbar = ProgressBar.create(title: 'Exporting to ISI/WoS-tagged file:',
                                          total: files.length,
                                          **::Workflow::Config.progress_defaults)
@@ -166,14 +192,24 @@ module Workflow
           file_name = File.basename(file_path, '.json')
           puts "Processing #{file_name}.json:" if verbose
           doi = file_name.sub('_', '/')
-          item = get_csl_metadata(doi, verbose:)
+          item = merge_and_validate(doi, verbose:)
+          # do not include items without any authors (such as book report sections)
+          next if get_csl_creator_list(item).length == 0
 
           # add generated abstract and keywords if there are no in the metadata
           if text_dir && (item['abstract'].nil? || item['keyword'].nil?)
-            txt_file_path = File.join(text_dir, file_name + ".txt")
-            abstract, keywords = summarize_file txt_file_path, ratio: 5, topics: true, remove_list: remove_list
+            # try cache first to avoid recalculation
+            abstract = item_cache.dig(file_name, 'abstract')
+            if abstract.nil?
+              puts " - Generating abstract and keywords from fulltext" if verbose
+              txt_file_path = File.join(text_dir, file_name + ".txt")
+              abstract, keyword = summarize_file txt_file_path, ratio: 5, topics: true, remove_list: remove_list
+            else
+              puts " - Using previously generated abstract and keywords" if verbose
+              keyword = item_cache.dig(file_name, 'keyword')
+            end
             item['abstract'] ||= abstract
-            item['keyword'] ||= keywords
+            item['keyword'] ||= keyword
           end
 
           # references
@@ -181,15 +217,30 @@ module Workflow
           n = references&.length || 0
           num_refs += n
           puts " - Found #{n} references" if verbose
+
+          # keywords generated from references
+          if n.positive? && item['custom'][CUSTOM_GENERATED_KEYWORDS].nil?
+            generated_keywords = item_cache.dig(file_name, 'custom', CUSTOM_GENERATED_KEYWORDS)
+            if generated_keywords.nil?
+              refs_titles = references.map { |ref| ref['title'] }.join(" ")
+              _, generated_keywords = refs_titles.summarize(topics: true)
+              item['custom'][CUSTOM_GENERATED_KEYWORDS] = generated_keywords.force_encoding("utf-8").split(",")
+              puts " - Generated additional keywords from references: #{generated_keywords}" if verbose
+            else
+              puts " - Using previously reference-generated keywords: #{generated_keywords}" if verbose
+            end
+          end
+
+          # write to file
           ::Export::Wos.append_record(export_file_path, item, compact:, add_ref_source: false, encoding:)
-          items.append(item)
+          item_cache[file_name] = item
           counter += 1
-          # break if counter.positive?
+          break if limit && counter >= limit
         end
         progressbar.finish unless verbose
-        puts "Exported #{num_refs} references from #{files.length} files to #{export_file_path}."
-        File.write(json_dump_path, JSON.pretty_generate(items))
-        puts "In addition, dumped JSON data of that export to #{json_dump_path}."
+        puts "Exported #{num_refs} references from #{counter} documents to #{export_file_path}."
+        File.write(item_cache_path, JSON.dump(item_cache))
+        puts "In addition, saved JSON data of that export to #{item_cache_path}." if verbose
       end
     end
   end

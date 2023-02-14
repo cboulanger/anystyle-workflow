@@ -1,5 +1,32 @@
 module Format
+
+  # This module hold information and methods that work with the CSL standard and
+  # non-standard vendor extension or those defined by this app
   module CSL
+
+    CUSTOM_TIMES_CITED_FIELDS = [
+      Datasource::Wos::TIMES_CITED,
+      Datasource::OpenAlex::TIMES_CITED,
+      Datasource::Dimensions::TIMES_CITED,
+      Datasource::Crossref::TIMES_CITED,
+    ]
+
+    CUSTOM_AUTHORS_AFFILIATIONS_FIELDS = [
+      Datasource::Wos::AUTHORS_AFFILIATIONS,
+      Datasource::Dimensions::AUTHORS_AFFILIATIONS,
+      Datasource::Crossref::AUTHORS_AFFILIATIONS,
+    ]
+
+    CSL_FIELDS = [
+      FIELD_CUSTOM = "custom"
+    ]
+
+    CUSTOM_FIELDS = [
+      CUSTOM_VALIDATED_BY = "validated-by",
+      CUSTOM_GENERATED_KEYWORDS = "x-generated-keywords"
+    ]
+
+
     def title_keywords(title, min_length = 4, max_number = 5)
       title.downcase
            .scan(/[[:alnum:]]+/)
@@ -16,11 +43,18 @@ module Format
     end
 
     # Given a csl-hash, return an array with author, year and title
-    def get_csl_author_year_title(item)
+    # @param [Hash] item
+    # @param [Boolean] downcase
+    def get_csl_author_year_title(item, downcase: false)
       author = get_csl_creator_names(item)&.first&.first
       year = get_csl_year(item)
       title = item['title']
-      [author, year, title]
+      if downcase
+        [author&.downcase, year, title&.downcase]
+      else
+        [author, year, title]
+      end
+
     end
 
     # Given a csl hash, return the publication date
@@ -57,7 +91,7 @@ module Format
     # @return [Array]
     # @param [Hash] csl_item
     def get_csl_creator_list(csl_item)
-      csl_item['author'] || csl_item['editor']
+      csl_item['author'] || csl_item['editor'] || []
     end
 
     def get_csl_family_and_given(creator_item)

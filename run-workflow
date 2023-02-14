@@ -60,6 +60,7 @@ HELP = \
         [--fulltext-ignore foo,bar,baz]     When automatically generating abstracts, ignore the given list of regular expressions
         [--no-compact]                      Do not remove empty fields (if required by importer)
         [--encoding]                        The encoding of the output file (defaults to utf-8)
+        [--limit]                           Maximum number of entries - for testing
 
     General parameters:
         --verbose                           Output additional information
@@ -208,21 +209,29 @@ if ARGV.include? 'export'
   remove_list = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
   remove_list = remove_list.split(",").map(&:strip) if remove_list.is_a? String
 
+  arg_name = '--limit'
+  limit = ARGV[(ARGV.index(arg_name) + 1)].to_i if ARGV.include? arg_name
+
   Workflow::Export.public_send("to_#{format}",
                                export_file_path:,
                                verbose: ARGV.include?('--verbose'),
                                compact: !ARGV.include?('--no-compact'),
                                text_dir:,
-                               remove_list:,
-                               encoding:)
+                               remove_list: remove_list || [],
+                               encoding: encoding || 'utf-8',
+                               limit:)
 end
 
-# Reconciliation/linking workflow
-# Workflow::Workflow.match_references
-# Workflow::Evaluation.create_eval_data
-# Workflow::Evaluation.run
-# Export workflow
-# Retrieve metadata for the files to be extracted
-# Workflow::Reconciliation.generate_csl_metadata datasources: ['openalex']
-#
-# Workflow::Workflow.export_to_neo4j
+if ARGV.include? 'get-metadata'
+
+  arg_name = '--from-dir'
+  source_dir = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
+
+  arg_name = '--limit'
+  limit = ARGV[(ARGV.index(arg_name) + 1)].to_i if ARGV.include? arg_name
+
+  arg_name = '--datasources'
+  datasources = ARGV[(ARGV.index(arg_name) + 1)].split(",").map(&:strip) if ARGV.include? arg_name
+
+  Workflow::Reconciliation.generate_csl_metadata datasources:datasources, limit:limit, source_dir:source_dir
+end

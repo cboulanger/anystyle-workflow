@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require './lib/datasource/crossref'
+require './lib/datasource/wos'
 require './lib/datasource/dimensions'
 require './lib/datasource/openalex'
 require './lib/datasource/anystyle'

@@ -51,42 +51,6 @@ module Datasource
         all_items
       end
 
-      # Given two hashes that would appear in the "references" section of CSL-JSON,
-      # return true if they should be considered the same for the purpose of avoiding
-      # duplicates
-      # NOT USED
-      def is_same_cited_ref?(r1, r2)
-        keys = %w[DOI id key]
-        keys.each do |key|
-          next if r1[key].nil? || r2[key].nil?
-          return true if r1[key] == r2[key]
-        end
-        # check author, title, year etc.
-        false
-      end
-
-      # Given an array of CSL-JSON items, merge their properties, in particular the
-      # 'references'
-      # NOT USED
-      def merge_metadata(items)
-        merged_item = {}
-        items.each do |item|
-          item.each do |key, value|
-            case key
-            when 'references'
-              # for now, just check doi & proprietary ids to avoid duplicates
-              refs = merged_item['references']
-              value.each do |r1|
-                refs.append(r) unless refs.any? { |r2| is_same_cited_ref?(r1, r2) }
-              end
-            else
-              # for now, just add missing values (does not check authors etc. )
-              merged_item[key] = value if merged_item[key].nil?
-            end
-          end
-        end
-        merged_item
-      end
     end
   end
 end

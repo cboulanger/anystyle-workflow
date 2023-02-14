@@ -5,6 +5,14 @@ require 'erb'
 
 module Datasource
   class OpenAlex
+
+    CSL_CUSTOM_FIELDS = [
+      TIMES_CITED = "openalex-cited-by-count",
+      AUTHORS_AFFILIATIONS = 'openalex-authors-affiliations',
+      AUTHORS_INSTITUTIONS = 'openalex-institutions',
+      AUTHORS_AFFILIATION_LITERAL = 'openalex-raw-affiliation-string'
+    ]
+
     @email ||= ENV['API_EMAIL']
     @batch_size = 100
     @base_url = 'https://openalex.org/'
@@ -111,7 +119,9 @@ module Datasource
         authorships.map do |author|
           {
             "literal": author['author']['display_name'],
-            "orcid": author['author']['orcid']
+            "orcid": author['author']['orcid'],
+            AUTHORS_INSTITUTIONS: author['institutions'],
+            AUTHORS_AFFILIATION_LITERAL: author['raw_affiliation_string']
           }
         end
       end

@@ -18,17 +18,10 @@ module Export
         'wos-id'
       end
 
-      def custom_times_cited
-        'wos-times-cited'
-      end
-
-      def custom_item_authors_affiliation
-        'wos-item-authors-affiliations'
-      end
-
+      # Given a CSL item, return an array of arrays with family and given name
       def to_au(item, initialize_given_names: true, separator: ", ")
         creator_names = get_csl_creator_names(item)
-        return "UNKNOWN" unless creator_names.is_a?(Array) && creator_names.length.positive?
+        return [] unless creator_names.is_a?(Array) && creator_names.length.positive?
 
         creator_names.map do |family, given|
           if initialize_given_names
@@ -82,6 +75,13 @@ module Export
         get_csl_year(item)
       end
 
+      def add_abbreviations(string)
+        string
+          .sub(/journal/i, "J")
+          .sub(/review/i, "Rev")
+          .sub(/university/i, "Univ")
+      end
+
       def create_cr_entry(item, add_ref_source: false)
         cit = []
         cit.append(to_cr_au(item))
@@ -96,7 +96,7 @@ module Export
           cit.append("ISBN #{item['ISBN']}") if item['ISBN']
         end
         cit.append "SOURCE #{item['source']}" if item['source'] if add_ref_source
-        cit.join(', ')
+        add_abbreviations(cit.join(', '))
       end
 
       def create_unique_identifier(item)
@@ -108,36 +108,55 @@ module Export
       end
 
       def create_cr_field(references, add_ref_source: false)
-        references.map { |cr| create_cr_entry(cr, add_ref_source:) }.sort
+        references
+          .select {|ref| to_au(ref).length.positive?}
+          .map { |ref| create_cr_entry(ref, add_ref_source:) }
+          .map(&:downcase).uniq.sort
+      end
+
+      def get_affiliations(csl_item)
+        affs = CUSTOM_AUTHORS_AFFILIATIONS_FIELDS.map { |f| csl_item.dig('custom', f) }.reject(&:nil?)
+        affs.length.positive? ? Array(affs.first) : []
       end
 
       # C1 [Milojevic, Stasa; Sugimoto, Cassidy R.; Dinga, Ying] Indiana Univ, Sch Informat & Comp, Bloomington, IN 47405 USA.
       #    [Lariviere, Vincent] Univ Montreal, Ecole Bibliothecon & Sci Informat, Montreal, PQ H3C 3J7, Canada.
       #    [Thelwall, Mike] Wolverhampton Univ, Sch Technol, Wolverhampton WV1 1LY, W Midlands, England.
       def to_c1(csl_item)
-        affiliations = csl_item.dig('custom', custom_item_authors_affiliation)
-        return if affiliations.nil?
-
-        i = -1
-        affiliations.map do |aff|
-          org = aff['organization']
-          org = org.first if org.is_a?(Array)
-          country = aff['country']
-          i += 1
-          "[#{to_af(csl_item)[i]}] #{org},X,X,#{country}."
+        affs = get_affiliations(csl_item)
+        to_af(csl_item).map.with_index do |author, i|
+          aff = affs[i]
+          if aff.is_a? Hash
+            org = aff['organization']
+            org = org.first if org.is_a?(Array)
+            country = aff['country']
+            aff_str = "#{org},#{country}"
+          elsif aff.is_a? String
+            aff_str = aff
+          else
+            aff_str = "unknown affiliation"
+          end
+          "[#{author}] #{aff_str}."
         end
       end
 
       # RP Milojevic, S (reprint author), Indiana Univ, Sch Informat & Comp, Bloomington, IN 47405 USA.
       def to_rp(csl_item)
-        aff = csl_item.dig('custom', custom_item_authors_affiliation)
-        return if aff.nil? || !aff.is_a?(Array) || !aff.length.positive?
+        affs = get_affiliations(csl_item)
+        author = to_au(csl_item)&.first
+        return if author.nil?
+        aff = affs.first
+        if aff.is_a? Hash
+          org = aff['organization']
+          org = org.first if org.is_a?(Array)
+          country = aff['country']
+          "#{author} #{org},#{country}."
+        elsif aff.is_a? String
+          "#{author} (reprint author), #{aff}."
+        else
+          "#{author} (reprint author),unknown affiliation."
+        end
 
-        aff = aff.first
-        org = aff['organization']
-        org = org.first if org.is_a?(Array)
-        country = aff['country']
-        "#{to_au(csl_item)&.first}] #{org},X,X,#{country}."
       end
 
       def to_di(doi)
@@ -145,11 +164,23 @@ module Export
       end
 
       def to_tc(csl_item)
-        csl_item.dig('custom', custom_times_cited)
+        tc = {}
+        CUSTOM_TIMES_CITED_FIELDS.each { |f | tc[f] = csl_item.dig('custom', f)&.to_i || 0 }
+        tc.values.max.to_s
       end
 
       def to_ab(abstract, width: 80)
         abstract.gsub(/(.{1,#{width}})(\s+|\Z)/, "\\1\n").split("\n")
+      end
+
+      def to_de(csl_item)
+        kw = csl_item["keyword"]
+        Array(kw).join("; ") unless kw.nil?
+      end
+
+      def to_id(csl_item)
+        id = csl_item.dig('custom', CUSTOM_GENERATED_KEYWORDS)
+        Array(id).join("; ") unless id.nil?
       end
 
       # convert a CSL-JSON datastructure as a WOS/RIS text record
@@ -180,11 +211,11 @@ module Export
           "SO": item['container-title'],
           "LA": na,
           "DT": to_dt(item['type']),
-          "DE": item['keyword'],
-          "ID": na,
+          "DE": to_de(item),
+          "ID": to_id(item),
           "AB": to_ab(item['abstract']),
           "C1": to_c1(item),
-          "RP": na,
+          "RP": to_rp(item),
           "EM": na,
           "RI": na,
           "BN": item['ISBN'],
@@ -236,35 +267,35 @@ module Export
           'VR 1.0',
           ''
         ].join("\n")
-        if encoding != "utf-8"
+        if encoding != 'utf-8'
           header.encode!(encoding, invalid: :replace, undef: :replace)
-            end
-          File.write(outfile, header, encoding: encoding)
         end
+        File.write(outfile, header, encoding: encoding)
+      end
 
-        # @param [String] outfile
-        # @param [Object] item
-        # @param [String (frozen)] encoding
-        # @param [Boolean] compact
-        # @param [Boolean] add_ref_source
-        def append_record(outfile, item, encoding: 'utf-8', compact: true, add_ref_source: false)
-          begin
-            fields = create_record(item, compact:, add_ref_source:)
-          rescue StandardError
-            puts "Error processing the following item:"
-            puts item
-            raise
-          end
-          records = []
-          fields.each do |key, value|
-            records.append("#{key} #{value}")
-          end
-          text = "#{records.join("\n")}\nER\n\n"
-          if encoding != "utf-8"
-            text = text.encode(encoding, invalid: :replace, undef: :replace)
-          end
-          File.write(outfile, text, 0, encoding:, mode: 'ab')
+      # @param [String] outfile
+      # @param [Object] item
+      # @param [String (frozen)] encoding
+      # @param [Boolean] compact
+      # @param [Boolean] add_ref_source
+      def append_record(outfile, item, encoding: 'utf-8', compact: true, add_ref_source: false)
+        begin
+          fields = create_record(item, compact:, add_ref_source:)
+        rescue StandardError
+          puts "Error processing the following item:"
+          puts item
+          raise
         end
+        records = []
+        fields.each do |key, value|
+          records.append("#{key} #{value}")
+        end
+        text = "#{records.join("\n")}\nER\n\n"
+        if encoding != "utf-8"
+          text = text.encode(encoding, invalid: :replace, undef: :replace)
+        end
+        File.write(outfile, text, 0, encoding:, mode: 'ab')
       end
     end
   end
+end

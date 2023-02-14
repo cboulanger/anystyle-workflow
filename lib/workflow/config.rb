@@ -16,9 +16,7 @@ module Workflow
         }
       end
 
-
     end
-
   end
 end
 

@@ -4,7 +4,13 @@ module Workflow
       # Generates CSL metadata for all files from the given datasources, using
       # cached data if it has been already retrieved
       # @param [Array<String (frozen)>] datasources
-      def generate_csl_metadata(datasources: %w[crossref dimensions openalex], limit: nil, break_on_error: false)
+      def generate_csl_metadata(datasources: %w[crossref dimensions openalex],
+                                source_dir:,
+                                limit:,
+                                break_on_error: false)
+
+        puts limit
+
         # load cached metadata
         cache = {}
         datasources.each do |ds|
@@ -17,7 +23,7 @@ module Workflow
         end
 
         # iterate over all files and retrieve missing metadata
-        files = Dir.glob(::Workflow::Config.refs_glob).map(&:untaint)
+        files = Dir.glob(File.join(source_dir || Path.csl, '*.json')).map(&:untaint)
         progressbar = ProgressBar.create(title: 'Fetching missing metadata for citing items:',
                                          total: files.length,
                                          **Config.progress_defaults)
@@ -35,7 +41,7 @@ module Workflow
               cache[ds][file_name] = meta.first unless meta.empty?
               counter += 1
             rescue StandardError => e
-              $logger.error "While querying #{ds} for #{doi}, encountered exception: #{e.inspect}"
+              puts "While querying #{ds} for #{doi}, encountered exception: #{e.inspect}"
               raise e if break_on_error
             end
           end
@@ -47,28 +53,6 @@ module Workflow
           metadata_path = File.join(Path.metadata, "#{ds}.json")
           json = JSON.pretty_generate(cache[ds])
           File.write(metadata_path, json)
-        end
-      end
-
-      def match_references
-        files = Dir.glob(::Workflow::Config.refs_glob).map(&:untaint)
-        progressbar = ProgressBar.create(title: 'Matching references:',
-                                         total: files.length,
-                                         **Config.progress_defaults)
-        files.each do |file_path|
-          file_name = File.basename(file_path, '.json')
-          outfile = File.join(Path.csl_matched, "#{file_name}.json")
-          progressbar.increment
-          refs = JSON.load_file(file_path)
-          identifiers = if File.exist? outfile
-                          JSON.load_file(outfile)
-                        else
-                          []
-                        end
-          refs.each_with_index do |item, index|
-            identifiers[index] = Matcher::CslMatcher.lookup(item) if identifiers[index].nil?
-          end
-          File.write(outfile, JSON.pretty_generate(identifiers))
         end
       end
 
