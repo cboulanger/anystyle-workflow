@@ -8,7 +8,7 @@ module Workflow
       # @param [Boolean] overwrite
       def pdf_to_txt(source_dir = Path.pdf, overwrite: false)
         anystyle = Datamining::AnyStyle.new
-        files = Dir.glob(File.join(source_dir, '*.pdf')).map(&:untaint)
+        files = Dir.glob(File.join(source_dir, '*.pdf'))
         progressbar = ProgressBar.create(title: 'Extracting text from PDF:',
                                          total: files.length,
                                          **Config.progress_defaults)
@@ -40,7 +40,7 @@ module Workflow
         finder_model_path = File.join model_dir, 'finder.mod'
         parser_model_path = File.join model_dir, 'parser.mod'
         anystyle = Datamining::AnyStyle.new(finder_model_path:, parser_model_path:)
-        files = Dir.glob(File.join(source_dir, '*.txt')).map(&:untaint)
+        files = Dir.glob(File.join(source_dir, '*.txt'))
         progressbar = ProgressBar.create(title: 'Extracting references from text:',
                                          total: files.length,
                                          **Config.progress_defaults)
@@ -87,7 +87,7 @@ module Workflow
           # get xml from gold if a corresponding file exists or by labelling the raw references
           parser_gold_path = !parser_gold_dir.nil? && File.join(parser_gold_dir, "#{file_name}.xml")
           xml = if parser_gold_path && File.exist?(parser_gold_path)
-                  puts " - Using parser gold from #{parser_gold_path}"
+                  puts " - Using parser gold from #{parser_gold_path}" if verbose
                   File.read(parser_gold_path)
                 else
                   anystyle.refs_to_xml(refs_txt)
@@ -128,7 +128,7 @@ module Workflow
 
 
       def write_statistics(verbose: false)
-        files = Dir.glob(File.join(Path.anystyle_json, '*.json')).map(&:untaint)
+        files = Dir.glob(File.join(Path.anystyle_json, '*.json'))
         progressbar = ProgressBar.create(title: 'Collecting extraction statistics:',
                                          total: files.length,
                                          **::Workflow::Config.progress_defaults)

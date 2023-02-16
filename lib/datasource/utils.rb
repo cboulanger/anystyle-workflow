@@ -34,18 +34,17 @@ module Datasource
       # Given an id and a list of datasources, return an array of results from these sources
       # in CSL-JSON format
       # @return Array
-      def fetch_metadata_by_identifier(id, datasources: [])
-        raise 'No identifier given' if id.nil? || id.empty?
-        raise 'No datasources given' if datasources.empty?
-
+      def fetch_metadata_by_identifier(id, datasources: [], verbose:)
         all_items = []
         datasources.map do |ds|
           resolver = get_resolver(ds)
           if id =~ /^10./ && resolver.respond_to?(:items_by_doi)
-            found_items = resolver.items_by_doi([id])
-            all_items.append(found_items.first) unless found_items.empty?
+            resolver.verbose = verbose
+            found_items = resolver.items_by_doi([id], include_references: true, include_abstract: true)
+            all_items.append(found_items.first) if found_items.length.positive?
+            puts " - Data imported." if verbose
           else
-            $logger.debug "Identifier '#{id}' cannot be resolved by #{ds}."
+            puts " - Identifier '#{id}' cannot be resolved by #{ds}." if verbose
           end
         end
         all_items

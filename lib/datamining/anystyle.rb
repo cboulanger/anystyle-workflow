@@ -15,8 +15,8 @@ module Datamining
 
     # loads the models, defaults to loading from models dir
     def self.load_models(finder_model_path = nil, parser_model_path = nil)
-      finder_model_path ||= File.join(Workflow::Path.models, 'finder.mod').untaint
-      parser_model_path ||= File.join(Workflow::Path.models, 'parser.mod').untaint
+      finder_model_path ||= File.join(Workflow::Path.models, 'finder.mod')
+      parser_model_path ||= File.join(Workflow::Path.models, 'parser.mod')
       ::AnyStyle.finder.load_model(finder_model_path)
       ::AnyStyle.parser.load_model(parser_model_path)
     end
@@ -31,7 +31,7 @@ module Datamining
     # Given a path to a .ttx file, return unparsed references as a newline-separated text
     # @param [String] file_path
     def ttx_to_refs(file_path)
-      File.read(file_path.untaint)
+      File.read(file_path)
           .split("\n")
           .select { |line| line.start_with? 'ref' }
           .map { |line| line[line.index('|')+1..]&.strip }

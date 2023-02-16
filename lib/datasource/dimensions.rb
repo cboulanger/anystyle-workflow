@@ -14,6 +14,8 @@ module Datasource
 
     class << self
 
+      attr_accessor :verbose
+
       @cache = nil
 
       def parse_authors(authors)
@@ -35,7 +37,7 @@ module Datasource
 
       def init_cache(save:false)
         @cache = {}
-        csv_files = Dir.glob('data/0-metadata/dimensions-*.csv').map(&:untaint)
+        csv_files = Dir.glob('data/0-metadata/dimensions-*.csv')
         csv_files.each do |csv_path|
           puts "Parsing #{csv_path}"
           options = {}

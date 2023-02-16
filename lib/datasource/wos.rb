@@ -7,7 +7,7 @@ module Datasource
     ]
 
     class << self
-
+      attr_accessor :verbose
     end
 
   end

@@ -2,7 +2,7 @@ module Datasource
   class Corpus
     def initialize(corpus_dir, glob_pattern)
       @corpus_dir = corpus_dir
-      @corpus_files = Dir.glob(File.join(corpus_dir, glob_pattern)).map(&:untaint).shuffle
+      @corpus_files = Dir.glob(File.join(corpus_dir, glob_pattern)).shuffle
     end
 
     def files(filter = nil)

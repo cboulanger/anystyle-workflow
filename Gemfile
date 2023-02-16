@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-ruby '3.1.2'
+ruby '3.2.1'
 source 'https://rubygems.org'
 gem 'activegraph', '~> 11.1.0.alpha.3'
 gem 'anystyle'

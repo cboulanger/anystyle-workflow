@@ -69,9 +69,9 @@ module Workflow
       def check(path)
         case path.extname
         when '.ttx'
-          AnyStyle.finder.check path.to_s.untaint
+          AnyStyle.finder.check path.to_s
         when '.xml'
-          AnyStyle.parser.check path.to_s.untaint
+          AnyStyle.parser.check path.to_s
         end
       end
 

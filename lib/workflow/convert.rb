@@ -8,7 +8,7 @@ module Workflow
       # @param [String] out_dir
       def anystyle_json_to_tei_xml(in_dir, out_dir, overwrite: false)
         json_to_tei = PyCall.import_module('json_to_tei_anystyle')
-        files = Dir.glob(File.join(in_dir, '*.json')).map(&:untaint)
+        files = Dir.glob(File.join(in_dir, '*.json'))
         files.each do |csl_file|
           tei_file = File.join(out_dir, "#{File.basename(csl_file, '.json')}.xml")
           next if File.exist?(tei_file) && !overwrite
@@ -26,7 +26,7 @@ module Workflow
       # @param [String] out_dir
       def anystyle_xml_to_csl_json(in_dir, out_dir, overwrite: false)
         anystyle = Datamining::AnyStyle.new
-        files = Dir.glob(File.join(in_dir, '*.xml')).map(&:untaint)
+        files = Dir.glob(File.join(in_dir, '*.xml'))
         files.each do |file_path|
           file_name = File.basename file_path, '.xml'
           outfile = File.join(out_dir, "#{file_name}.json")
@@ -63,7 +63,7 @@ module Workflow
       # @param [String] out_dir
       def anystyle_xml_to_anystyle_json(in_dir, out_dir, overwrite: false)
         anystyle = Datamining::AnyStyle.new
-        files = Dir.glob(File.join(in_dir, '*.xml')).map(&:untaint)
+        files = Dir.glob(File.join(in_dir, '*.xml'))
         files.each do |file_path|
           file_name = File.basename file_path, '.xml'
           outfile = File.join(out_dir, "#{file_name}.json")

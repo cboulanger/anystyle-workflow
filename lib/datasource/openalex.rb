@@ -7,7 +7,7 @@ module Datasource
   class OpenAlex
 
     CSL_CUSTOM_FIELDS = [
-      TIMES_CITED = "openalex-cited-by-count",
+      TIMES_CITED = 'openalex-cited-by-count',
       AUTHORS_AFFILIATIONS = 'openalex-authors-affiliations',
       AUTHORS_INSTITUTIONS = 'openalex-institutions',
       AUTHORS_AFFILIATION_LITERAL = 'openalex-raw-affiliation-string'
@@ -15,11 +15,17 @@ module Datasource
 
     @email ||= ENV['API_EMAIL']
     @batch_size = 100
-    @base_url = 'https://openalex.org/'
-    @base_api_url = 'https://api.openalex.org/'
+    @base_url = 'http://openalex.org'
+    @base_api_url = 'http://api.openalex.org'
     @entity_types = %w[work author institution venue]
+
     class << self
+
+      HTTPX::Plugins.load_plugin(:follow_redirects)
+      HTTPX::Plugins.load_plugin(:retries)
+
       attr_accessor :email, :batch_size
+      attr_accessor :verbose
 
       def headers
         raise 'No email address configured' unless email
@@ -32,16 +38,20 @@ module Datasource
 
       def raise_api_error(url, response)
         raise "#{url} returned 404 page not found" if response.status == 404
-
-        begin
-          json_response = response.json
-          error = json_response['error']
-          message = json_response['message']
-        rescue StandardError
-          error = 'Unknown Error'
-          message = response.body.to_s
+        if response.error
+          error = 'Connection error'
+          message = response.error.to_s
+        else
+          begin
+            json_response = response.json
+            error = json_response['error']
+            message = json_response['message']
+          rescue StandardError
+            error = 'Unknown Error'
+            message = response.to_s
+          end
         end
-        raise "Call to #{url} failed.\nError:#{response.status_code} #{error}\nMessage: #{message}"
+        raise "Call to #{url} failed.\n#{error}: #{message}"
       end
 
       def get_short_id(entity_id)
@@ -59,9 +69,11 @@ module Datasource
 
         entity_id = get_short_id(entity_id)
         url = "#{@base_api_url}/#{entity_type}s/#{entity_id}"
-        $logger.debug "Requesting #{url}"
-        response = HTTPX.with(headers:).get(url)
-        raise_api_error(url, response) if response.status != 200
+        puts " - Requesting #{url}" if verbose
+        http = HTTPX.plugin(:follow_redirects, follow_insecure_redirects: true)
+                    .plugin(:retries, retry_after: 2, max_retries: 10)
+        response = http.with(headers:).get(url)
+        raise_api_error(url, response) if response.error || response.status >= 400
         response.json
       end
 
@@ -73,9 +85,11 @@ module Datasource
         filter = ERB::Util.url_encode(entity_filter)
         loop do
           url = "#{@base_api_url}/#{entity_type}s?filter=#{filter}&per-page=#{batch_size}&page=#{page}"
-          $logger.debug "Requesting #{url}"
-          response = HTTPX.with(headers:).get(url)
-          raise_api_error(url, response) if response.status != 200
+          puts " - Requesting #{url}" if verbose
+          HTTPX::Plugins.load_plugin(:follow_redirects)
+          http = HTTPX.plugin(:follow_redirects)
+          response = http.with(headers:).get(url, follow_insecure_redirects: true)
+          raise_api_error(url, response) if response.error || response.status >= 400
 
           data = response.json
           results.append(data['results'])
@@ -120,8 +134,9 @@ module Datasource
           {
             "literal": author['author']['display_name'],
             "orcid": author['author']['orcid'],
-            AUTHORS_INSTITUTIONS: author['institutions'],
-            AUTHORS_AFFILIATION_LITERAL: author['raw_affiliation_string']
+            "#{AUTHORS_INSTITUTIONS}": author['institutions'],
+            "#{AUTHORS_AFFILIATION_LITERAL}": author['raw_affiliation_string'],
+            "openalex-author-id": author['author']['id']
           }
         end
       end
@@ -135,19 +150,24 @@ module Datasource
         "#{first_page}-#{last_page}"
       end
 
-      def parse_reference(referenced_works)
-        referenced_works.map do |openalex_id|
-          entity_to_csl get_single_entity('work', openalex_id), include_references: false
+      def parse_reference(entity)
+        rw = entity['referenced_works']
+        puts ' - Retrieving references...' if verbose
+        rw.map do |openalex_id|
+          entity_to_csl(get_single_entity('work', openalex_id))
         end
       end
 
-      def parse_abstract(_abstract_inverted_index)
-        'not implemented'
+      def parse_abstract(entity)
+        ii = entity['abstract_inverted_index']
+        text = []
+        ii.each { |word, list| list.each { |i| text[i] = word } }
+        text.join(' ')
       end
 
       # Given an API entity response, return CSL-JSON data
       # @param [Hash] entity
-      def entity_to_csl(entity, include_references: true, include_abstract: false)
+      def entity_to_csl(entity, include_references: false, include_abstract: false)
         e = entity
         item = {
           "custom": {
@@ -164,18 +184,18 @@ module Datasource
           "issue": e['biblio']['issue'],
           "page": parse_page(e)
         }
-        item['reference'] = parse_reference(e['referenced_works']) if include_references
-        item['abstract'] = parse_abstract(e['abstract_inverted_index']) if include_abstract
+        item['reference'] = parse_reference(e) if include_references
+        item['abstract'] = parse_abstract(e) if include_abstract
         item
       end
 
       # Given an array of DOIs, return their metadata in CSL-JSON format
       # @param [Array] dois
       # @return Array
-      def items_by_doi(dois)
+      def items_by_doi(dois, include_references: false, include_abstract: false)
         dois.map do |doi|
-          entity = get_single_entity 'work', "doi:#{doi}"
-          entity_to_csl entity, include_references: true
+          entity = get_single_entity('work', "doi:#{doi}")
+          entity_to_csl(entity, include_references:, include_abstract:)
         end
       end
     end

@@ -173,7 +173,7 @@ module Workflow
                  encoding: "utf-8",
                  limit:)
 
-        files = Dir.glob(File.join(source_dir, '*.json')).map(&:untaint)
+        files = Dir.glob(File.join(source_dir, '*.json'))
         export_file_path ||= File.join(Path.export, "export-wos-#{Utils.timestamp}.txt")
         item_cache_path = File.join(Path.tmp, "metadata_cache.json")
         item_cache = File.exist?(item_cache_path) ? JSON.load_file(item_cache_path) : {}
@@ -219,16 +219,17 @@ module Workflow
           puts " - Found #{n} references" if verbose
 
           # keywords generated from references
-          if n.positive? && item['custom'][CUSTOM_GENERATED_KEYWORDS].nil?
+          if n.positive?
             generated_keywords = item_cache.dig(file_name, 'custom', CUSTOM_GENERATED_KEYWORDS)
-            if generated_keywords.nil?
-              refs_titles = references.map { |ref| ref['title'] }.join(" ")
-              _, generated_keywords = refs_titles.summarize(topics: true)
-              item['custom'][CUSTOM_GENERATED_KEYWORDS] = generated_keywords.force_encoding("utf-8").split(",")
-              puts " - Generated additional keywords from references: #{generated_keywords}" if verbose
+            if generated_keywords.is_a?(Array) && generated_keywords.length.positive?
+              puts " - Using previously reference-generated keywords: #{generated_keywords.join("; ")}" if verbose
             else
-              puts " - Using previously reference-generated keywords: #{generated_keywords}" if verbose
+              refs_titles = references.map { |ref| ref['title'] }.join(" ")
+              _, kw = refs_titles.summarize(topics: true)
+              generated_keywords = kw.force_encoding("utf-8").split(",")
+              puts " - Adding reference-generated keywords: #{generated_keywords.join("; ")}" if verbose
             end
+            item['custom'][CUSTOM_GENERATED_KEYWORDS] = generated_keywords
           end
 
           # write to file

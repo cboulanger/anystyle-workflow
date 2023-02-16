@@ -3,7 +3,7 @@ module Export
     class << self
       def to_neo4j
         Datasource::Neo4j.connect
-        files = Dir.glob(File.join('data', '3-csl', '*.json')).map(&:untaint)
+        files = Dir.glob(File.join('data', '3-csl', '*.json'))
         progressbar = ProgressBar.create(title: 'Matching references:',
                                          total: files.length,
                                          **::Workflow::Config.progress_defaults)

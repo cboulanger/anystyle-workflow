@@ -15,7 +15,7 @@ module Datasource
 
     class << self
 
-
+      attr_accessor :verbose
 
       def query(name, title, date)
         name = Datasource::Utils.author_name_family(name)

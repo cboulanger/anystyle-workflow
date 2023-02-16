@@ -33,7 +33,7 @@ module Workflow
         puts 'Creating evaluation data'
         FileUtils.mkdir_p gold_dir
         FileUtils.mkdir_p output_dir_anystyle
-        gold_files = Dir.glob(File.join(Path.gold_tei, '*.xml')).map(&:untaint)
+        gold_files = Dir.glob(File.join(Path.gold_tei, '*.xml'))
         gold_files.each do |gold_file_path|
           FileUtils.copy gold_file_path, gold_dir
           FileUtils.copy File.join(Path.tei, File.basename(gold_file_path)), output_dir_anystyle
