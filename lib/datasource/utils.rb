@@ -14,6 +14,8 @@ module Datasource
           ::Datasource::Dimensions
         when 'openalex'
           ::Datasource::OpenAlex
+        when 'grobid'
+          ::Datasource::Grobid
         else
           raise "Unknown datasource #{datasource}"
         end
@@ -34,13 +36,13 @@ module Datasource
       # Given an id and a list of datasources, return an array of results from these sources
       # in CSL-JSON format
       # @return Array
-      def fetch_metadata_by_identifier(id, datasources: [], verbose:)
+      def import_by_identifier(id, datasources: [], verbose:)
         all_items = []
         datasources.map do |ds|
           resolver = get_resolver(ds)
-          if id =~ /^10./ && resolver.respond_to?(:items_by_doi)
+          if id =~ /^10./ && resolver.respond_to?(:import_items_by_doi)
             resolver.verbose = verbose
-            found_items = resolver.items_by_doi([id], include_references: true, include_abstract: true)
+            found_items = resolver.import_items_by_doi([id], include_references: true, include_abstract: true)
             all_items.append(found_items.first) if found_items.length.positive?
             puts " - Data imported." if verbose
           else
@@ -49,6 +51,7 @@ module Datasource
         end
         all_items
       end
+
 
     end
   end

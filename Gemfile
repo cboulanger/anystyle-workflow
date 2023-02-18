@@ -24,3 +24,5 @@ gem "matrix", "~> 0.4.2"
 gem "text", "~> 1.3"
 
 gem "summarize", "~> 1.0"
+
+gem "nokogiri", "~> 1.14"

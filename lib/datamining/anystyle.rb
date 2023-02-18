@@ -45,6 +45,13 @@ module Datamining
       ::AnyStyle.finder.find(file_path, format: :wapiti)[0].to_s(tagged: true)
     end
 
+    # Given the path to a .txt file containing the raw text of the document, return
+    # an xml-annotated version that can be saved as an '.xml' file
+    # @param [String] file_path
+    def doc_to_xml(file_path)
+      ::AnyStyle.finder.find(file_path, format: :wapiti)[0].to_xml()
+    end
+
     # Given the unparsed references as a newline-separated text, return the tagged
     # xml-tagged format
     # @param [string] refs_txt

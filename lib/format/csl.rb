@@ -26,7 +26,6 @@ module Format
       CUSTOM_GENERATED_KEYWORDS = "x-generated-keywords"
     ]
 
-
     def title_keywords(title, min_length = 4, max_number = 5)
       title.downcase
            .scan(/[[:alnum:]]+/)
@@ -66,10 +65,12 @@ module Format
       when Hash
         if date['raw']
           date['raw']
-        elsif date['date-parts']
-          dp = date['date-parts']
+        elsif (dp = date['date-parts'])
           if dp.is_a?(Array) && dp.length.positive?
-            dp = dp.first if dp.first.is_a?(Array) # work around malformed data
+            if dp.first.is_a?(Array)
+              # work around malformed data
+              dp = dp.first
+            end
             dp.join('-')
           else
             "Invalid date"

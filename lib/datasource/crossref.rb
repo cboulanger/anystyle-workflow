@@ -40,7 +40,7 @@ module Datasource
         items_by_doi(data['message'].map { |item| item['DOI'] })
       end
 
-      def items_by_doi(dois)
+      def import_items_by_doi(dois, include_references: true, include_abstract: true)
         $logger.debug("Querying crossref with DOIs #{dois.join(', ')}")
         response = Serrano.content_negotiation(ids: dois, format: 'citeproc-json')
         if response.nil?

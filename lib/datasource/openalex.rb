@@ -72,7 +72,9 @@ module Datasource
         puts " - Requesting #{url}" if verbose
         http = HTTPX.plugin(:follow_redirects, follow_insecure_redirects: true)
                     .plugin(:retries, retry_after: 2, max_retries: 10)
-        response = http.with(headers:).get(url)
+                    .with(timeout: { operation_timeout: 10 })
+                    .with(headers:)
+        response = http.get(url)
         raise_api_error(url, response) if response.error || response.status >= 400
         response.json
       end
@@ -160,6 +162,8 @@ module Datasource
 
       def parse_abstract(entity)
         ii = entity['abstract_inverted_index']
+        return if ii.nil?
+
         text = []
         ii.each { |word, list| list.each { |i| text[i] = word } }
         text.join(' ')
@@ -172,7 +176,8 @@ module Datasource
         item = {
           "custom": {
             "openalex-id": get_short_id(e['id']),
-            "openalex-cited-by-count": e['cited_by_count']
+            "openalex-cited-by-count": e['cited_by_count'],
+            "openalex-counts-by-year": e['counts_by_year']
           },
           "DOI": e['doi'],
           "title": e['title'],
@@ -186,6 +191,7 @@ module Datasource
         }
         item['reference'] = parse_reference(e) if include_references
         item['abstract'] = parse_abstract(e) if include_abstract
+        item.delete_if { |_k, v| v.nil? }
         item
       end
 

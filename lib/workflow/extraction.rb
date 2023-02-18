@@ -3,6 +3,8 @@
 module Workflow
   class Extraction
     class << self
+      include ::Format::CSL
+
       # extracts text from PDF documents
       # @param [String] source_dir
       # @param [Boolean] overwrite
@@ -30,7 +32,7 @@ module Workflow
       # @param [String, nil] model_dir
       # @param [String, nil] parser_gold_dir
       # @param [String, nil] finder_gold_dir
-      def doc_to_csl_json(source_dir: Path.txt,
+      def doc_to_csl_json(limit:, source_dir: Path.txt,
                           overwrite: false,
                           output_intermediaries: false,
                           model_dir: Path.models,
@@ -41,9 +43,12 @@ module Workflow
         parser_model_path = File.join model_dir, 'parser.mod'
         anystyle = Datamining::AnyStyle.new(finder_model_path:, parser_model_path:)
         files = Dir.glob(File.join(source_dir, '*.txt'))
-        progressbar = ProgressBar.create(title: 'Extracting references from text:',
-                                         total: files.length,
-                                         **Config.progress_defaults)
+        unless verbose
+          progressbar = ProgressBar.create(title: 'Extracting references from text:',
+                                           total: files.length,
+                                           **Config.progress_defaults)
+        end
+        counter = 0
         files.each do |file_path|
           file_name = File.basename(file_path, '.txt')
           if verbose
@@ -79,12 +84,18 @@ module Workflow
             ttx_path = File.join(Path.ttx, "#{file_name}.ttx")
             unless File.exist?(ttx_path) && !overwrite
               ttx = anystyle.doc_to_ttx file_path
-              puts " - Writing .ttx to #{ttx_path}" if verbose
+              puts " - Writing finder .ttx to #{ttx_path}" if verbose
               File.write(ttx_path, ttx)
+            end
+            finder_xml_path = File.join(Path.anystyle_finder_xml, "#{file_name}.xml")
+            unless File.exist?(finder_xml_path) && !overwrite
+              xml = anystyle.doc_to_xml file_path
+              puts " - Writing finder .xml to #{finder_xml_path}" if verbose
+              File.write(finder_xml_path, xml)
             end
           end
 
-          # get xml from gold if a corresponding file exists or by labelling the raw references
+          # get xml from gold if a corresponding file exists, if not, by labelling the raw references
           parser_gold_path = !parser_gold_dir.nil? && File.join(parser_gold_dir, "#{file_name}.xml")
           xml = if parser_gold_path && File.exist?(parser_gold_path)
                   puts " - Using parser gold from #{parser_gold_path}" if verbose
@@ -95,7 +106,7 @@ module Workflow
 
           # write the intermediary .xml file
           if output_intermediaries
-            xml_path = File.join(Path.anystyle_xml, "#{file_name}.xml")
+            xml_path = File.join(Path.anystyle_parser_xml, "#{file_name}.xml")
             unless File.exist?(xml_path) && !overwrite
               puts " - Writing xml to #{xml_path}" if verbose
               File.write(xml_path, xml)
@@ -122,19 +133,30 @@ module Workflow
             puts " - Writing rejected csl json to #{csl_rejected_file}" if verbose
             File.write csl_rejected_file, JSON.pretty_generate(rejected)
           end
+
+          counter += 1
+          break if limit && counter >= limit
         end
       end
 
-
-
-      def write_statistics(verbose: false)
+      def write_statistics(verbose: false, type: 'reference')
         files = Dir.glob(File.join(Path.anystyle_json, '*.json'))
-        progressbar = ProgressBar.create(title: 'Collecting extraction statistics:',
-                                         total: files.length,
-                                         **::Workflow::Config.progress_defaults)
-        outfile = File.join(Path.export, "extraction-stats-#{Utils.timestamp}.csv")
+        unless verbose
+          progressbar = ProgressBar.create(title: "Collecting statistics on #{type}s:",
+                                           total: files.length,
+                                           **::Workflow::Config.progress_defaults)
+        end
+        outfile = File.join(Path.stats, "#{type}-stats-#{Utils.timestamp}.csv")
         stats = []
-        columns = %w[file journal year a_all a_rejected a_potential]
+        case type
+        when 'reference'
+          columns = %w[file journal year a_all a_rejected a_potential]
+        when 'affiliation'
+          columns = %w[file journal year]
+        else
+          raise "Type must be 'reference' or 'affiliation'"
+        end
+
         # vendor data
         vendor_cache = ::Datasource::Utils.get_vendor_data
         vendors = vendor_cache.keys
@@ -143,32 +165,69 @@ module Workflow
         raise 'CrossRef metadata is required' unless crossref_meta
 
         stats.append columns
+        puts "Analysing #{files.length} files..." if verbose
         files.each do |file_path|
-          progressbar.increment unless verbose
           file_name = File.basename(file_path, '.json')
-          begin
-            year = ::Format::CSL.get_csl_year(crossref_meta[file_name])
-            journal_abbrv = crossref_meta[file_name]['container-title'].scan(/\S+/).map { |w| w[0] }.join()
-          rescue StandardError
-            puts "Warning: Problem parsing year/journal for #{file_name}" if verbose
-            next
+          doi = file_name.sub('_', '/')
+
+          if verbose
+            puts " - #{file_name}"
+          else
+            progressbar.increment unless verbose
           end
+
+          crossref_item = crossref_meta[file_name]
+          raise "No metadata for #{file_name}" if crossref_item.nil?
+
+          year = get_csl_year(crossref_item)
+          journal_abbrv = crossref_meta[file_name]['container-title'].scan(/\S+/).map { |w| w[0] }.join
           row = [file_name, journal_abbrv, year]
-          # all found from anystyle json
-          all = JSON.load_file(file_path)
-          row.append(all.length)
-          # rejected csl items
-          rf_path = File.join Path.csl_rejected, "#{file_name}.json"
-          row.append(File.exist?(rf_path) ? JSON.load_file(rf_path).length : nil)
-          # potential csl items
-          pf_path = File.join Path.csl, "#{file_name}.json"
-          row.append(File.exist?(pf_path) ? JSON.load_file(pf_path).length : nil)
-          # vendor data
-          vendors.each do |vendor|
-            refs = vendor_cache.dig(vendor, file_name)
-            refs = refs.first if refs.is_a? Array
-            refs = refs['reference'] if refs.is_a? Hash
-            row.append(refs.is_a?(Array) ? refs.length : 0)
+
+          case type
+          when 'reference'
+            # all found from anystyle json
+            all = JSON.load_file(file_path)
+            row.append(all.length)
+            # rejected csl items
+            rf_path = File.join Path.csl_rejected, "#{file_name}.json"
+            row.append(File.exist?(rf_path) ? JSON.load_file(rf_path).length : nil)
+            # potential csl items
+            pf_path = File.join Path.csl, "#{file_name}.json"
+            row.append(File.exist?(pf_path) ? JSON.load_file(pf_path).length : nil)
+            # vendor data
+            vendors.each do |vendor|
+              ref = vendor_cache.dig(vendor, file_name)
+              ref = ref.first if ref.is_a? Array
+              ref = ref['reference'] if ref.is_a? Hash
+              row.append(ref.is_a?(Array) ? ref.length : 0)
+            end
+          else
+            # vendor data only
+            vendors.each do |vendor|
+              ref = vendor_cache.dig(vendor, file_name) || ref = vendor_cache.dig(vendor, doi)
+              ref = refs.first if ref.is_a? Array
+              num_affiliations = if ref.nil?
+                                   puts " - #{vendor}: No entry for '#{file_name}'" if verbose
+                                   0
+                                 else
+                                   author = ref['author'] || []
+                                   case vendor
+                                   when 'grobid'
+                                     author.reject { |a| a[Datasource::Grobid::AUTHOR_AFFILIATIONS].nil? }
+                                   when 'openalex'
+                                     author.reject { |a| a[Datasource::OpenAlex::AUTHORS_AFFILIATION_LITERAL].empty? }
+                                   when 'crossref'
+                                     author.reject { |a| a['affiliation'].empty? }
+                                   when 'dimensions'
+                                     ref['custom'][Datasource::Dimensions::AUTHORS_AFFILIATIONS] || []
+                                   when 'wos'
+                                     ref['custom'][Datasource::Wos::AUTHORS_AFFILIATIONS] || []
+                                   else
+                                     raise "Unhandled vendor #{vendor}"
+                                   end.length
+                                 end
+              row.append(num_affiliations)
+            end
           end
           # write row
           stats.append(row)

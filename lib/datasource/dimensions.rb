@@ -82,7 +82,7 @@ module Datasource
 
       # interface method
       # @return Array
-      def items_by_doi(dois)
+      def import_items_by_doi(dois)
         init_cache if @cache.nil?
         dois.map { |doi| @cache[doi] }
       end

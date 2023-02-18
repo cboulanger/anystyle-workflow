@@ -11,7 +11,6 @@ module Export
   # @see https://aurimasv.github.io/z2csl/typeMap.xml
   class Wos
     class << self
-
       include Format::CSL
 
       def custom_id
@@ -19,7 +18,7 @@ module Export
       end
 
       # Given a CSL item, return an array of arrays with family and given name
-      def to_au(item, initialize_given_names: true, separator: ", ")
+      def to_au(item, initialize_given_names: true, separator: ', ')
         creator_names = get_csl_creator_names(item)
         return [] unless creator_names.is_a?(Array) && creator_names.length.positive?
 
@@ -38,7 +37,7 @@ module Export
       end
 
       def to_cr_au(csl_item)
-        to_au(csl_item, separator: " ").first
+        to_au(csl_item, separator: ' ').first
       end
 
       def to_dt(csl_type)
@@ -77,9 +76,9 @@ module Export
 
       def add_abbreviations(string)
         string
-          .sub(/journal/i, "J")
-          .sub(/review/i, "Rev")
-          .sub(/university/i, "Univ")
+          .sub(/journal/i, 'J')
+          .sub(/review/i, 'Rev')
+          .sub(/university/i, 'Univ')
       end
 
       def create_cr_entry(item, add_ref_source: false)
@@ -95,11 +94,11 @@ module Export
           cit.append(item['title'])
           cit.append("ISBN #{item['ISBN']}") if item['ISBN']
         end
-        cit.append "SOURCE #{item['source']}" if item['source'] if add_ref_source
+        cit.append "SOURCE #{item['source']}" if add_ref_source && (item['source'])
         add_abbreviations(cit.join(', '))
       end
 
-      def create_unique_identifier(item)
+      def to_ut(item)
         item['DOI'] || item['ISBN'].scan(/\d+/)&.first || "#{to_cr_au(item)} #{to_pd(item)}"
       end
 
@@ -109,7 +108,7 @@ module Export
 
       def create_cr_field(references, add_ref_source: false)
         references
-          .select {|ref| to_au(ref).length.positive?}
+          .select { |ref| to_au(ref).length.positive? }
           .map { |ref| create_cr_entry(ref, add_ref_source:) }
           .map(&:downcase).uniq.sort
       end
@@ -126,15 +125,16 @@ module Export
         affs = get_affiliations(csl_item)
         to_af(csl_item).map.with_index do |author, i|
           aff = affs[i]
-          if aff.is_a? Hash
+          case aff
+          when Hash
             org = aff['organization']
             org = org.first if org.is_a?(Array)
             country = aff['country']
             aff_str = "#{org},#{country}"
-          elsif aff.is_a? String
+          when String
             aff_str = aff
           else
-            aff_str = "unknown affiliation"
+            aff_str = 'unknown affiliation'
           end
           "[#{author}] #{aff_str}."
         end
@@ -145,27 +145,28 @@ module Export
         affs = get_affiliations(csl_item)
         author = to_au(csl_item)&.first
         return if author.nil?
+
         aff = affs.first
-        if aff.is_a? Hash
+        case aff
+        when Hash
           org = aff['organization']
           org = org.first if org.is_a?(Array)
           country = aff['country']
           "#{author} #{org},#{country}."
-        elsif aff.is_a? String
+        when String
           "#{author} (reprint author), #{aff}."
         else
           "#{author} (reprint author),unknown affiliation."
         end
-
       end
 
       def to_di(doi)
-        doi.sub(/^https?:\/\/doi.org\//, '')
+        doi.sub(%r{^https?://doi.org/}, '')
       end
 
       def to_tc(csl_item)
         tc = {}
-        CUSTOM_TIMES_CITED_FIELDS.each { |f | tc[f] = csl_item.dig('custom', f)&.to_i || 0 }
+        CUSTOM_TIMES_CITED_FIELDS.each { |f| tc[f] = csl_item.dig('custom', f)&.to_i || 0 }
         tc.values.max.to_s
       end
 
@@ -174,13 +175,13 @@ module Export
       end
 
       def to_de(csl_item)
-        kw = csl_item["keyword"]
-        Array(kw).join("; ") unless kw.nil?
+        kw = csl_item['keyword']
+        Array(kw).join('; ') unless kw.nil?
       end
 
       def to_id(csl_item)
         id = csl_item.dig('custom', CUSTOM_GENERATED_KEYWORDS)
-        Array(id).join("; ") unless id.nil?
+        Array(id).join('; ') unless id.nil?
       end
 
       # convert a CSL-JSON datastructure as a WOS/RIS text record
@@ -205,11 +206,11 @@ module Export
         references = item['reference'] || []
         fields = {
           "PT": to_pt(item['type']),
-          "AU": to_au(item), # Author's
+          "AU": to_au(item),
           "AF": to_af(item),
           "TI": item['title'],
           "SO": item['container-title'],
-          "LA": na,
+          "LA": item['language'],
           "DT": to_dt(item['type']),
           "DE": to_de(item),
           "ID": to_id(item),
@@ -241,7 +242,7 @@ module Export
           "WC": na,
           "SC": na,
           "GA": na,
-          "UT": create_unique_identifier(item)
+          "UT": to_ut(item)
         }
         # cleanup
         fields.delete_if { |_k, v| v.nil? || v.to_s.empty? || v == na } if compact
@@ -267,10 +268,8 @@ module Export
           'VR 1.0',
           ''
         ].join("\n")
-        if encoding != 'utf-8'
-          header.encode!(encoding, invalid: :replace, undef: :replace)
-        end
-        File.write(outfile, header, encoding: encoding)
+        header.encode!(encoding, invalid: :replace, undef: :replace) if encoding != 'utf-8'
+        File.write(outfile, header, encoding:)
       end
 
       # @param [String] outfile
@@ -282,7 +281,7 @@ module Export
         begin
           fields = create_record(item, compact:, add_ref_source:)
         rescue StandardError
-          puts "Error processing the following item:"
+          puts 'Error processing the following item:'
           puts item
           raise
         end
@@ -291,9 +290,7 @@ module Export
           records.append("#{key} #{value}")
         end
         text = "#{records.join("\n")}\nER\n\n"
-        if encoding != "utf-8"
-          text = text.encode(encoding, invalid: :replace, undef: :replace)
-        end
+        text = text.encode(encoding, invalid: :replace, undef: :replace) if encoding != 'utf-8'
         File.write(outfile, text, 0, encoding:, mode: 'ab')
       end
     end

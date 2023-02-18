@@ -1,29 +1,30 @@
+# frozen_string_literal: true
+
 module Workflow
-  class Reconciliation
-
-
-
+  class Import
     class << self
-
       def metadata_file_path(datasource, outfile_suffix)
-        File.join(Path.metadata, "#{datasource}#{outfile_suffix ? '-' : ''}#{outfile_suffix||''}.json")
+        File.join(Path.metadata, "#{datasource}#{outfile_suffix ? '-' : ''}#{outfile_suffix || ''}.json")
       end
 
       # Generates CSL metadata for all files from the given datasources, using
       # cached data if it has been already retrieved
       # @param [Array<String (frozen)>] datasources
-      def generate_csl_metadata(datasources: %w[crossref dimensions openalex],
-                                source_dir:Path.anystyle_json,
-                                outfile_suffix:,
-                                limit:,
+      def generate_csl_metadata(outfile_suffix:, limit:, datasources:,
+                                source_dir: Path.anystyle_json,
                                 break_on_error: true,
-                                verbose: false)
+                                verbose: false,
+                                use_cache: true)
+
+        if !datasources.is_a?(Array) || datasources.empty?
+          raise "datasources must be non-empty array"
+        end
 
         # load cached metadata
         cache = {}
         datasources.each do |ds|
           file_path = metadata_file_path(ds, outfile_suffix)
-          cache[ds] = if File.exist? file_path
+          cache[ds] = if use_cache && File.exist?(file_path)
                         JSON.load_file(file_path)
                       else
                         {}
@@ -32,11 +33,17 @@ module Workflow
 
         # iterate over all files and retrieve missing metadata
         files = Dir.glob(File.join(source_dir || Path.csl, '*.json'))
-        progressbar = ProgressBar.create(title: 'Fetching missing metadata for citing items:',
-                                         total: files.length,
-                                         **Config.progress_defaults) unless verbose
+        unless verbose
+          progressbar = ProgressBar.create(title: 'Fetching missing metadata:',
+                                           total: files.length,
+                                           **Config.progress_defaults)
+        end
+
         counter = 0
+        imported = 0
         total = [files.length, limit || files.length].min
+
+        # iterate over all files
         files.each do |file_path|
           progressbar.increment unless verbose
 
@@ -44,29 +51,33 @@ module Workflow
           doi = file_name.sub(/_/, '/') # relies on file names being DOIs
 
           datasources.each do |ds|
+            counter += 1
             if cache[ds][file_name]
-              puts "#{doi}: Already imported from #{ds}"
+              puts "#{doi}: Already imported from #{ds}" if verbose
               next
             end
-            puts "Importing #{doi} from #{ds} #{counter+1}/#{total}..."
+            puts "Importing #{doi} from #{ds} #{counter}/#{total}..." if verbose
 
             begin
-              meta = Datasource::Utils.fetch_metadata_by_identifier(doi, datasources: [ds], verbose:)
-              cache[ds][file_name] = meta.first if meta.length.positive?
-              counter += 1
+              meta = Datasource::Utils.import_by_identifier(doi, datasources: [ds], verbose:)
+              if meta.length.positive?
+                cache[ds][file_name] = meta.first
+                imported += 1
+              end
+
             rescue StandardError => e
               puts "While querying #{ds} for #{doi}, encountered exception: #{e.inspect}"
               raise e if break_on_error
             end
           end
 
-          # save cache to disk every five records or at the last iteration
-          if counter % 5 == 0 || counter == total
+          # save cache to disk after importing five records or at the last iteration
+          if (imported > 0 && (imported % 5).zero?) || counter == total
             datasources.each do |ds|
               metadata_path = metadata_file_path(ds, outfile_suffix)
               json = JSON.pretty_generate(cache[ds])
               File.write(metadata_path, json)
-              puts "Saved #{ds} metadata to #{metadata_path}"
+              puts "Saved #{ds} metadata to #{metadata_path}" if verbose
             end
           end
 
