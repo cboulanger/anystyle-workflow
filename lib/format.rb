@@ -1,1 +1,1 @@
-require_all './lib/format/*'
+require_all './lib/format/*.rb'

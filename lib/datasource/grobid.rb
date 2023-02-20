@@ -11,47 +11,54 @@ module Datasource
     class << self
       attr_accessor :verbose
 
-      def import_items_by_doi(dois, include_references:, include_abstract:)
+      def import_items_by_doi(dois, include_references:false, include_abstract:false)
         dois.map do |doi|
           file_name = doi.sub('/', '_')
           file_path = File.join(Workflow::Path.grobid_tei, "#{file_name}.tei.xml")
-          CSL_Document.from_tei_file(file_path).to_h
+          data = {
+            "DOI": doi
+          }
+          Item.from_tei_file(file_path, data)
         end
       end
     end
 
-    class CSL_Document
-      def self.from_tei_file(file_path)
-        new(File.open(file_path) { |f| Nokogiri::XML(f) })
+    class Item < Format::CSL::Item
+
+      def self.from_tei_file(file_path, data)
+        xml = File.open(file_path) { |f| Nokogiri::XML(f) }
+        new(xml, data)
       end
 
       # @param [Nokogiri::XML::Document] doc
-      def initialize(doc)
+      # @param [Hash] data Additional CSL metadata
+      def initialize(doc, data={})
+        unless doc.is_a? Nokogiri::XML::Document
+          raise "constructor arg must be a Nokogire::XML::Document"
+        end
         doc.remove_namespaces!
-        @doc = doc
+        @_doc = doc
+        custom.metadata_source = "grobid"
+        data.merge!({ title:, abstract:, author: })
+        super(data)
       end
 
-      def to_h
-        {
-          author:,
-          title:,
-          abstract:,
-        }
-      end
 
       def title
-        @doc.xpath('//teiHeader/fileDesc/titleStmt/title/text()').to_s
+        @title || @_doc.xpath('//teiHeader/fileDesc/titleStmt/title/text()').to_s
       end
 
       def abstract
-        @doc.xpath('//teiHeader/profileDesc/abstract/*').to_s
+        @abstract || @_doc.xpath('//teiHeader/profileDesc/abstract/*').to_s.gsub(/<[^>]+>/,"")
       end
 
       # Returns a CSL compliant author field with additional affiliation information
       # in the 'grobid-author-affiliations' field
       # @return [Array]
       def author
-        author_nodes = @doc.xpath('//teiHeader/fileDesc/sourceDesc/biblStruct/analytic/author')
+        return @author if @author
+
+        author_nodes = @_doc.xpath('//teiHeader/fileDesc/sourceDesc/biblStruct/analytic/author')
         author_nodes.map do |author_node|
           family = author_node.xpath('persName/surname/text()').to_s
           given = author_node.xpath('persName/forename/text()').to_s
@@ -83,7 +90,7 @@ module Datasource
                 aff_data['address']['country_code'] = country[0]['key']
               end
             end
-            author_data[AUTHOR_AFFILIATIONS] = aff_data unless aff_data.empty?
+            author_data['x_affiliations'] = [aff_data] unless aff_data.empty?
           end
           author_data
         end.compact

@@ -6,7 +6,7 @@ module Datasource
   class Utils
     class << self
 
-      def get_resolver(datasource)
+      def get_provider_by_name(datasource)
         case datasource
         when 'crossref'
           ::Datasource::Crossref
@@ -16,6 +16,8 @@ module Datasource
           ::Datasource::OpenAlex
         when 'grobid'
           ::Datasource::Grobid
+        when 'anystyle'
+          ::Datasource::Anystyle
         else
           raise "Unknown datasource #{datasource}"
         end
@@ -39,7 +41,7 @@ module Datasource
       def import_by_identifier(id, datasources: [], verbose:)
         all_items = []
         datasources.map do |ds|
-          resolver = get_resolver(ds)
+          resolver = get_provider_by_name(ds)
           if id =~ /^10./ && resolver.respond_to?(:import_items_by_doi)
             resolver.verbose = verbose
             found_items = resolver.import_items_by_doi([id], include_references: true, include_abstract: true)

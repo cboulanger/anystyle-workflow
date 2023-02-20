@@ -144,6 +144,10 @@ module Workflow
       def stats
         File.join(base, '5-stats')
       end
+
+      def cache
+        File.join(tmp, 'cache')
+      end
     end
   end
 end
