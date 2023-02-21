@@ -1,6 +1,6 @@
 require './lib/bootstrap'
 
-datasources = %w[crossref openalex anystyle grobid]
+datasources = %w[crossref openalex anystyle grobid dimensions]
 datasources.each do |ds|
   provider = Datasource::Utils.get_provider_by_name(ds)
   provider.verbose = true

@@ -146,25 +146,21 @@ module Format
     # Non-standard! Field names are a mix of OpenAlex and GROBID-TEI
     # 'literal': the non-segmented name
     # "department": "Department of Applied Economics",
-    # "laboratory": "ESRC Centre for Business Research",
+    # "center": "ESRC Centre for Business Research",
     # "institution": "University of Cambridge",
-    # "addrLine": "Sidgwick Avenue",
-    # "postCode": "CB3 9DE",
+    # "address": "Sidgwick Avenue",
+    # "post_code": "CB3 9DE",
     # "settlement": "Cambridge",
     # "country": "England",
     # "country_code": "GB"
     #
     class Affiliation < Object
-      ACCESSOR_MAP = {
-        'addr_line': 'addrine',
-        'post_code': 'postCode'
-      }.freeze
 
-      attr_accessor :literal, :laboratory, :institution, :addr_line, :post_code, :settlement, :country, :country_code,
-                    :ror, :x_affiliation_api_url, :x_affiliation_id
+      attr_accessor :literal, :center, :institution, :department, :address, :country,
+                    :country_code, :ror, :x_affiliation_api_url, :x_affiliation_id
 
       def initialize(properties)
-        super properties, ACCESSOR_MAP
+        super properties
       end
     end
 
@@ -292,7 +288,7 @@ module Format
       end
 
       # other metadata
-      attr_accessor :doi, :authority, :isbn, :issn, :url, :abstract, :categories, :citation_key,
+      attr_accessor :authority, :citation_number, :doi, :isbn, :issn, :url, :abstract, :categories, :citation_key,
                     :edition, :issue, :journal_abbreviation, :keyword, :language, :locator, :note,
                     :page, :publisher, :publisher_place, :references, :volume
 
@@ -309,7 +305,7 @@ module Format
 
       # other metadata
       attr_accessor :pmcid, :pmid, :annote, :archive, :archive_collection, :archive_location, :archive_place,
-                    :call_number, :chapter_number, :citation_label, :citation_number, :collection_number,
+                    :call_number, :chapter_number, :citation_label, :collection_number,
                     :collection_title, :container_title, :container_title_short, :dimensions, :division,
                     :event, :event_place, :event_title, :first_reference_note_number, :genre, :jurisdiction,
                     :medium, :number, :number_of_pages, :number_of_volumes, :original_publisher,

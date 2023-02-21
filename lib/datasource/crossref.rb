@@ -43,7 +43,6 @@ module Datasource
         items_by_doi(data['message'].map { |item| item['DOI'] })
       end
 
-
       # fixes some crossref specific problems
       def fix_crossref_item(item)
         # remove xml tags from crossref abstract field
@@ -69,7 +68,6 @@ module Datasource
         end
         item
       end
-
 
       # ######################################################################
       # new style
@@ -105,10 +103,9 @@ module Datasource
       end
     end
 
-
     class Creator < Format::CSL::Creator
       def affiliation=(affiliation)
-        self.x_affiliations = affiliation.map { |a| Format::CSL::Affiliation.new({'literal': a}) }
+        self.x_affiliations = affiliation.map { |a| Format::CSL::Affiliation.new({ 'literal': a }) }
       end
     end
 
@@ -121,7 +118,6 @@ module Datasource
                          journal-issue alternative-id container-title-short published published-print].freeze
 
       def initialize(data)
-        self.custom.times_cited = data['is-referenced-by-count']
         self.custom.metadata_source = 'crossref'
         IGNORE_FIELDS.each { |key| data.delete(key) }
         super data
@@ -133,6 +129,10 @@ module Datasource
 
       def abstract=(abstract)
         @abstract = abstract.gsub!(/<[^<]+?>/, '')
+      end
+
+      def is_referenced_by_count=(count)
+        self.custom.times_cited = count
       end
 
       def reference=(references)
