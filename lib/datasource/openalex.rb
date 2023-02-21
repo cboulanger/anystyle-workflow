@@ -4,7 +4,7 @@ require 'httpx'
 require 'erb'
 
 module Datasource
-  class OpenAlex
+  class OpenAlex < Datasource
 
     CSL_CUSTOM_FIELDS = [
       TIMES_CITED = 'openalex-cited-by-count',
@@ -119,7 +119,7 @@ module Datasource
 
       # Given an array of DOIs, return their metadata in CSL-JSON format
       # @param [Array] dois
-      # @return [CSL::Item]
+      # @return [Array<Item>]
       def import_items_by_doi(dois, include_references: false, include_abstract: false)
         dois.map do |doi|
           data = get_single_entity('work', "doi:#{doi}")

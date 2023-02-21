@@ -10,7 +10,7 @@ module Export
         files.each do |file_path|
           progressbar.increment
           file_name = File.basename(file_path, '.json')
-          # work = Datasource::Utils.fetch_metadata_by_identifier(file_name, datasources: ['neo4j']) # returns a Work or {family, date, title,doi}
+          # work = Datasource.fetch_metadata_by_identifier(file_name, datasources: ['neo4j']) # returns a Work or {family, date, title,doi}
           case work
           when Work
             family = work.first_creator_name

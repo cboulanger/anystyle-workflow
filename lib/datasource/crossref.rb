@@ -5,7 +5,7 @@ require 'namae'
 require 'digest'
 
 module Datasource
-  class Crossref
+  class Crossref < Datasource
 
     CSL_CUSTOM_FIELDS = [
       TIMES_CITED = 'crossref-is-referenced-by-count',
@@ -15,70 +15,39 @@ module Datasource
       AUTHORS_AFFILIATIONS = 'crossref-authors-affiliations'
     ].freeze
 
-    include Format::CSL
-
     class << self
-      attr_accessor :verbose
 
       def query(name, title, date)
-        name = Datasource::Utils.author_name_family(name)
-        title_keywords = Datasource::Utils.title_keywords(title)
+        name = Format::CSL.author_name_family(name)
+        title_keywords = Format::CSL.title_keywords(title)
         args = {
           query_author: name,
           query_bibliographic: "#{title_keywords} #{date}",
           select: 'author, title, issued, DOI'
         }
-        $logger.debug("Querying crossref with #{JSON.pretty_generate(args)}")
+        puts "Querying crossref with #{JSON.pretty_generate(args)}" if verbose
         response = Serrano.works(**args)
-        $logger.debug("Response:#{JSON.pretty_generate(response)}")
+        #puts"Response:#{JSON.pretty_generate(response)}" if verbose
+        response
       end
 
       def exists(name, title, date)
         data = query(name, title, date)
-        true
+        raise "not implemented"
       end
 
       def lookup(name, title, date)
         data = query(name, title, date)
-        items_by_doi(data['message'].map { |item| item['DOI'] })
+        import_items_by_doi(data['message'].map { |item| item['DOI'] })
       end
 
-      # fixes some crossref specific problems
-      def fix_crossref_item(item)
-        # remove xml tags from crossref abstract field
-        item['abstract'].gsub!(/<[^<]+?>/, '') if item['abstract'].is_a? String
-        # parse crossref's 'reference[]/unstructured' fields into author, date and title information
-        references = item['reference'] || []
-        if references.length.positive?
-          references.map! do |ref|
-            if ref['unstructured'].nil? || ref['DOI'].nil?
-              ref
-            else
-              m = ref['unstructured'].match(/^(?<author>.+) \((?<year>\d{4})\) (?<title>[^.]+)\./)
-              return ref if m.nil?
-
-              {
-                'author' => Namae.parse(m[:author]).map(&:to_h),
-                'issued' => [{ 'date-parts' => [m[:year]] }],
-                'title' => m[:title],
-                'DOI' => ref['DOI']
-              }
-            end
-          end
-        end
-        item
-      end
-
-      # ######################################################################
-      # new style
-      # ######################################################################
-
+      # @return [Array<Item>]
       def import_items_by_doi(dois, include_references: true, include_abstract: true)
-        raise "dois must be Array" unless dois.is_a? Array
-        puts " - Querying crossref with DOI #{dois.join(', ')}" if verbose
+        raise 'dois must be Array' unless dois.is_a? Array
 
         items = Cache.load(dois)
         if items.nil?
+          puts " - CrossRef: Requesting data for #{dois.join(', ')}" if verbose
           response = Serrano.content_negotiation(ids: dois, format: 'citeproc-json')
           if response.nil?
             puts ' - No result' if verbose
@@ -88,16 +57,13 @@ module Datasource
           unless items.is_a? Array
             items = [items]
           end
-          items.map! do |item|
-            item.delete('reference') unless include_references
-            item.delete('abstract') unless include_abstract
-          end
           Cache.save(dois, items)
         elsif verbose
-          puts " - Using cache for DOI #{dois.join(', ')}" if verbose
+          puts " - CrossRef: Using cache for DOI #{dois.join(', ')}" if verbose
         end
-
         items.map do |item|
+          item.delete('reference') unless include_references
+          item.delete('abstract') unless include_abstract
           Item.new(item)
         end
       end

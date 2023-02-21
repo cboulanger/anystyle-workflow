@@ -6,7 +6,8 @@ require './lib/cache'
 
 module Datasource
 
-  class Dimensions
+  class Dimensions < Datasource
+
     CSL_CUSTOM_FIELDS = [
       TIMES_CITED = 'dimensions-times-cited',
       AUTHORS_AFFILIATIONS = 'dimensions-authors-affiliation'
@@ -19,8 +20,6 @@ module Datasource
     ].freeze
 
     class << self
-      attr_accessor :verbose
-
       @cache = nil
 
       def parse_authors(authors)
@@ -89,7 +88,7 @@ module Datasource
       end
 
       # interface method
-      # @return Array
+      # @return [Array<Item>]
       def import_items_by_doi(dois, include_references: false, include_abstract: false, reset_cache: false)
         @cache ||= Cache.load('dimensions', use_literal: true)
         if @cache && !reset_cache
@@ -98,7 +97,7 @@ module Datasource
           @cache = init_cache(include_references: false, include_abstract:)
           Cache.save('dimensions', @cache, use_literal: true)
         end
-        dois.map { |doi| @cache[doi] }
+        dois.map { |doi| Item.new(@cache[doi]) }
       end
     end
 

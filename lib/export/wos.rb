@@ -11,20 +11,6 @@ module Export
   # @see https://aurimasv.github.io/z2csl/typeMap.xml
   class Wos
     class << self
-      include Format::CSL
-
-      CUSTOM_TIMES_CITED_FIELDS = [
-        Datasource::Wos::TIMES_CITED,
-        Datasource::OpenAlex::TIMES_CITED,
-        Datasource::Dimensions::TIMES_CITED,
-        Datasource::Crossref::TIMES_CITED
-      ].freeze
-
-      CUSTOM_AUTHORS_AFFILIATIONS_FIELDS = [
-        Datasource::Wos::AUTHORS_AFFILIATIONS,
-        Datasource::Dimensions::AUTHORS_AFFILIATIONS,
-        Datasource::Crossref::AUTHORS_AFFILIATIONS
-      ].freeze
 
       def custom_id
         'wos-id'

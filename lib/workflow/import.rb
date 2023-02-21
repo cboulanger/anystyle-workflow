@@ -59,7 +59,7 @@ module Workflow
             puts "Importing #{doi} from #{ds} #{counter}/#{total}..." if verbose
 
             begin
-              meta = Datasource::Utils.import_by_identifier(doi, datasources: [ds], verbose:)
+              meta = Datasource.import_by_identifier(doi, datasources: [ds], verbose:)
               if meta.length.positive?
                 cache[ds][file_name] = meta.first
                 imported += 1

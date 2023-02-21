@@ -158,7 +158,7 @@ module Workflow
         end
 
         # vendor data
-        vendor_cache = ::Datasource::Utils.get_vendor_data
+        vendor_cache = ::Datasource.get_vendor_data
         vendors = vendor_cache.keys
         columns += vendors
         crossref_meta = vendor_cache['crossref']

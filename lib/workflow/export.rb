@@ -17,7 +17,11 @@ module Workflow
         # Add unvalidated anystyle referencex
         ADD_UNVALIDATED = 'add_unvalidated',
         # simply add all vendor data, this leads to lots of duplicated
-        DUMP_ALL = 'dump_all'
+        DUMP_ALL = 'dump_all',
+        # remove duplicates, using an author/year heuristic
+        REMOVE_DUPLICATES = 'remove_duplicates',
+        # Add affiliation data if available
+        ADD_AFFILIATIONS = 'add_affiliations'
       ].freeze
 
       # Given a DOI, merge available data into a CSL hash (having a "reference" field containing the cited
@@ -26,133 +30,131 @@ module Workflow
       # vendor name as key and the reference that validates the anystyle data as value
       # @param [String] doi
       # @param [Boolean] verbose
-      # @param [Export.POLICIES[]] policies
-      def merge_and_validate(doi, verbose: false, policies: [ADD_MISSING_ALL, ADD_UNVALIDATED])
-        # load all available metadata in memory except the anystyle data, which will be loaded on demand
-        @vendor_data = ::Datasource::Utils.get_vendor_data if @vendor_data.nil?
+      # @param [Array<Export.POLICIES>] policies
+      # @return [Format::CSL::Item]
+      def merge_and_validate(doi, verbose: false,
+                             policies: [ADD_MISSING_ALL, ADD_UNVALIDATED, REMOVE_DUPLICATES, ADD_AFFILIATIONS])
 
-        file_name = doi.sub('/', '_')
+        Datasource::Anystyle.verbose = verbose
+        Datasource::Crossref.verbose = verbose
 
-        # lookup with crossref metadata by doi (or file name, deprecated)
-        item = @vendor_data.dig('crossref', doi) || @vendor_data.dig('crossref', file_name)
-        raise "No metadata exists for #{doi}, cannot continue." if item.nil?
+        # get anystyle item (enriched with crossref metadata)
+        # @type [Item]
+        item = Datasource::Anystyle.import_items_by_doi([doi]).first
 
-        item = Datasource::Crossref.fix_crossref_item(item)
+        raise "No data available for DOI #{doi}" if item.nil?
 
-        # load anystyle references for the requested item
-        anystyle_references = Datasource::Anystyle.get_references_by_doi(doi)
-        references = []
+        # The validated references
+        # @type [Array<Format::CSL::Item>]
+        validated_references = []
 
-        # process available data from vendors
-        @vendor_data.each_key do |vendor|
-          vendor_item = @vendor_data.dig(vendor, doi) || @vendor_data.dig(vendor, file_name)
+        num_anystyle_added_refs = 0
+        num_anystyle_validated_refs = 0
+        num_anystyle_unvalidated_refs = 0
 
-          if vendor_item.nil?
-            puts " - No data for #{doi} in #{vendor}" if verbose
-            next
-          end
-
-          # move non-standard fields into "custom" field
-          # this should be done in the classes themselves
-          item[FIELD_CUSTOM] = {} if item[FIELD_CUSTOM].nil?
-          case vendor
-          when 'crossref'
-            # move cited-by-count to custom
-            item[FIELD_CUSTOM][Datasource::Crossref::TIMES_CITED] = item[Datasource::Crossref::TIMES_CITED_ORIG]
-            # move authors affiliations to custom
-            affiliations = get_csl_creator_list(item).map do |creator|
-              creator.dig('affiliation', 0, 'name')
-            end.reject(&:nil?)
-            if affiliations.length.positive?
-              item[FIELD_CUSTOM][Datasource::Crossref::AUTHORS_AFFILIATIONS] =
-                affiliations
-            end
-          when 'openalex'
-            # move authors affiliations to custom
-            affiliations = get_csl_creator_list(item).map do |creator|
-              creator[Datasource::OpenAlex::AUTHORS_AFFILIATION_LITERAL]
-            end.reject(&:nil?)
-            if affiliations.length.positive?
-              item[FIELD_CUSTOM][Datasource::OpenAlex::AUTHORS_AFFILIATIONS] =
-                affiliations
-            end
-          end
-
-          if vendor != 'crossref'
-            # add abstract if no crossref abstract exists
-            item['abstract'] ||= vendor_item['abstract'] if vendor_item['abstract'].is_a? String
-
-            # add custom fields
-            item[FIELD_CUSTOM].merge! vendor_item[FIELD_CUSTOM]
-          end
+        # lookup with crossref metadata by doi
+        vendors = %w[crossref openalex grobid dimensions wos]
+        vendors.each do |vendor|
+          # @type [Item]
+          vendor_item = ::Datasource.get_provider_by_name(vendor).import_items_by_doi([doi]).first
 
           # add reference data
-          vendor_refs = vendor_item['reference'] || []
+          # @type [Array<Item>]
+          vendor_refs = vendor_item.x_references
+          num_vendor_added_refs = 0
 
           if policies.include?(DUMP_ALL)
-            vendor_refs.each { |ref| ref['source'] = vendor }
-            anystyle_references += vendor_refs
+            validated_references += vendor_refs
+            num_vendor_added_refs += vendor_refs.length
             puts " - #{vendor}: added #{vendor_refs.length} references" if verbose && vendor_refs.length.positive?
           else
-
             # match each anystyle reference against all vendor references since we cannot be sure they are in the same order
             # this can certainly be optimized but is good enough for now
-            num_anystyle_refs = 0
-            num_vendor_refs = 0
-            num_validated_refs = 0
             vendor_refs.each do |vendor_ref|
-              vauthor, vyear = get_csl_author_year_title vendor_ref, downcase: true
-              next if vauthor.nil? || vauthor.strip.empty?
+              vendor_author, vendor_year = vendor_ref.creator_year_title(downcase: true)
+              next if vendor_author.nil?
 
               matched = false
-              anystyle_references.each do |ref|
-                author, year = get_csl_author_year_title ref, downcase: true
+              item.x_references.each do |ref|
+                author, year = ref.creator_year_title(downcase: true)
                 # validation is done by author / year exact match. this will produce some false positives/negatives
-                next unless author == vauthor && year == vyear
-
-                ref[FIELD_CUSTOM] = {} if ref[FIELD_CUSTOM].nil?
-                ref[FIELD_CUSTOM][CUSTOM_VALIDATED_BY] = {} if ref[FIELD_CUSTOM][CUSTOM_VALIDATED_BY].nil?
-                ref[FIELD_CUSTOM][CUSTOM_VALIDATED_BY].merge!({ vendor => vendor_ref })
+                next unless author == vendor_author && year == vendor_year
+                # validate
+                ref.validate_by(vendor_ref)
+                # add affiliations
+                add_affiliations(ref, vendor_ref, vendor)
                 # add only if reference hasn't been validated already
-                unless ref[FIELD_CUSTOM][CUSTOM_VALIDATED_BY].keys.count > 1
-                  references.append(ref)
+                unless ref.custom.validated_by.keys.count > 1
+                  validated_references.append(ref)
                   puts " - anystyle: Added #{author} #{year} (validated by #{vendor})" if verbose
-                  num_anystyle_refs += 1
+                  num_anystyle_added_refs += 1
                 end
-                num_validated_refs += 1
+                num_anystyle_validated_refs += 1
                 matched = true
               end
-              next unless matched == false
+              next if matched
 
               next unless policies.include?(ADD_MISSING_ALL) || (policies.include?(ADD_MISSING_FREE) && vendor != 'wos')
 
-              references.append(vendor_ref)
-              puts " - #{vendor}: Added #{vauthor} (#{vyear}) " if verbose
-              num_vendor_refs += 1
+              validated_references.append(vendor_ref)
+              puts " - #{vendor}: Added #{vendor_author} (#{vendor_year}) " if verbose
+              num_vendor_added_refs += 1
             end
           end
-          if verbose && num_vendor_refs.positive?
-            puts " - #{vendor}: validated #{num_validated_refs} anystyle references (of which #{num_anystyle_refs} were added), and added #{num_vendor_refs} missing references"
+          if verbose && num_vendor_added_refs.positive?
+            puts " - #{vendor}: validated #{num_anystyle_validated_refs} anystyle references " +
+                   "(of which #{num_anystyle_added_refs} were added), " +
+                   "and added #{num_vendor_added_refs} missing references"
           end
+
+          next unless policies.include?(ADD_AFFILIATIONS)
+          add_affiliations(item, vendor_item, vendor)
+
         end
-        num_vendor_refs = references.length
 
         if policies.include?(ADD_UNVALIDATED)
-          anystyle_references.each do |ref|
-            next if ref.dig(FIELD_CUSTOM, CUSTOM_VALIDATED_BY)&.keys&.length&.positive?
+          item.x_references.each do |ref|
+            next if ref.validated?
 
-            author, year = get_csl_author_year_title(ref, downcase: true)
+            author, year = ref.creator_year_title(downcase: true)
             next if author.nil? || author.empty?
 
             puts " - anystyle: Added unvalidated #{author} #{year}" if verbose
-            references.append(ref)
+            validated_references.append(ref)
+            num_anystyle_unvalidated_refs += 1
           end
-          puts " - added #{references.length - num_vendor_refs} unvalidated anystyle references" if verbose
+          puts " - added #{num_anystyle_unvalidated_refs} unvalidated anystyle references" if verbose
         end
 
-        item['reference'] = references
+        if policies.include?(REMOVE_DUPLICATES)
+          num_before = validated_references.length
+          validated_references.uniq! { |item| item.creator_year_title(downcase: true) }
+          num_removed = num_before - validated_references.length
+          puts " - removed #{num_removed} duplicate references" if num_removed.positive?
+        end
+
+        item.x_references = validated_references
         # return result
         item
+      end
+
+      private def add_affiliations(item, vendor_item, vendor)
+        item.creators.each do |creator|
+          vendor_item.creators.each do |vendor_creator|
+            next if creator.family != vendor_creator.family
+
+            creator.x_raw_affiliation_string ||= vendor_creator.x_raw_affiliation_string
+            aff = creator.x_affiliations&.first&.to_h&.compact
+            vendor_aff = vendor_creator.x_affiliations&.first&.to_h&.compact
+            next if vendor_aff.nil?
+
+            next unless aff.nil? || vendor_aff.keys.length > aff.keys.length
+
+            # assume the better affiliation data is the one with more keys
+            creator.x_affiliations = [Format::CSL::Affiliation.new(vendor_aff)]
+            puts " - #{vendor}: Added richer affiliation data"
+          end
+        end
       end
 
       # Generate a hash, the keys being the file basenames of the anystyle csl file, the values being

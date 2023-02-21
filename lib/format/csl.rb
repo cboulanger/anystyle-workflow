@@ -49,7 +49,7 @@ module Format
                         value
                       end
         end
-        hash
+        hash.compact
       end
 
       alias_method :to_hash, :to_h
@@ -98,31 +98,31 @@ module Format
         @raw || @date_parts.first.join('-')
       end
 
+      # Returns the date's year as an integer, if available, otherwise nil
+      # @return [Integer]
+      def to_year
+        (@date_parts.first&.first || @raw.scan(/\d{4}/)&.first)&.to_i
+      end
+
     end
 
     # A name/creator field such as author, editor, translator...
     class Creator < Object
-
-      ACCESSOR_MAP = {
-        'dropping_particle': 'dropping-particle',
-        'non_dropping_particle': 'non-dropping-particle'
-      }.freeze
 
       # csl standard
       attr_accessor :family, :given, :literal, :suffix, :dropping_particle, :non_dropping_particle, :sequence, :particle
 
       # extensions
       attr_accessor :x_orcid, :x_author_id, :x_author_api_url, :x_raw_affiliation_string
+
+      # @!attribute x_affiliations
+      # @return [Array<Affiliation>]
       attr_reader :x_affiliations
 
-      def initialize(properties)
-        super properties, ACCESSOR_MAP
-      end
-
+      # @param [Array<Hash|Affiliation>] affiliations
       def x_affiliations=(affiliations)
-        unless affiliations.is_a?(Array)
-          raise 'Value must be an array'
-        end
+        raise 'Value must be an array' unless affiliations.is_a?(Array)
+
         @x_affiliations = affiliations.map do |affiliation|
           case affiliation
           when Affiliation
@@ -135,10 +135,49 @@ module Format
         end
       end
 
+      # #################################################
+      # Utility methods
+      # #################################################
+
+      def family_and_given
+        if family
+          [family, given]
+        elsif (l = literal)
+          case l
+          when /^\p{Lu}+ \p{Lu}{1,3}$/ # this handles WoS entries, shouldn't be here
+            p = l.split(' ')
+            [p[0].capitalize, p[1]]
+          when /^\p{Lu}\p{Ll}+ \p{Lu}{1,3}$/ # this handles WoS entries, shouldn't be here
+            p = l.split(' ')
+            [p[0].capitalize, p[1]]
+          when /^\p{Lu}+$/ # this handles WoS entries, shouldn't be here
+            [l.capitalize, '']
+          else
+            # normal case
+            [parse_family(l), parse_given(l)]
+          end
+        end
+      end
+
+      def initial
+        given.scan(/\p{L}+/)&.map { |n| n[0] }&.join('')
+      end
+
       private
 
       def affiliation_factory(data)
         Affiliation.new(data)
+      end
+
+      def parse_family(name)
+        n = Namae.parse(name).first
+        return if n.nil?
+
+        [n.particle, n.family].reject(&:nil?).join(' ')
+      end
+
+      def parse_given(name)
+        Namae.parse(name).first&.given
       end
 
     end
@@ -159,17 +198,20 @@ module Format
       attr_accessor :literal, :center, :institution, :department, :address, :country,
                     :country_code, :ror, :x_affiliation_api_url, :x_affiliation_id
 
-      def initialize(properties)
-        super properties
-      end
     end
 
     # Custom
     class Custom < Object
 
-      # allowed entrys in the 'custom' object
+      def initialize(data, accesor_map = nil)
+        @validated_by = {}
+        super
+      end
+
+      # @!attribute validated_by
+      # @return [Hash<{String => Item}>
       attr_accessor :times_cited, :validated_by, :metadata_source, :metadata_id, :metadata_api_url,
-                    :cited_by_api_url, :container_id
+                    :reference_data_source, :cited_by_api_url, :container_id
 
     end
 
@@ -196,6 +238,10 @@ module Format
       # to do : check type
 
       # creator fields
+      # @!attribute author
+      # @return [Array<Creator>]
+      # @!attribute editor
+      # @return [Array<Creator>]
       attr_reader :author, :editor
 
       def initialize(data)
@@ -203,9 +249,7 @@ module Format
       end
 
       def author=(authors)
-        unless authors.is_a?(Array)
-          raise 'author data must be an array'
-        end
+        raise 'author data must be an array' unless authors.is_a?(Array)
         @author = authors.map do |creator|
           case creator
           when CSL::Creator
@@ -217,9 +261,7 @@ module Format
       end
 
       def editor=(editors)
-        unless editors.is_a?(Array)
-          raise 'Value must be an array'
-        end
+        raise 'Value must be an array' unless editors.is_a?(Array)
         @editor = editors.map do |creator|
           case creator
           when CSL::Creator
@@ -231,9 +273,12 @@ module Format
       end
 
       # date fields
+      # @!attribute issued
+      # @return [Date]
       attr_reader :issued
 
       def issued=(date_obj)
+        # parse different formats
         @issued = case date_obj
                   when Date
                     date
@@ -268,14 +313,14 @@ module Format
         @custom = Custom.new(hash)
       end
 
+      # @return [Custom]
       def custom
-        if @custom.nil?
-          @custom = Custom.new({})
-        end
+        @custom = Custom.new({}) if @custom.nil?
         @custom
       end
 
       # references
+      # @param [Array<Hash|Item>] references
       def x_references=(references)
         unless references.is_a?(Array) && references.select { |r| !r.is_a?(Item) }.empty?
           raise 'References must be an array of Item instances'
@@ -283,6 +328,7 @@ module Format
         @x_references = references
       end
 
+      # @return [Array<Item>]
       def x_references
         @x_references || []
       end
@@ -312,6 +358,57 @@ module Format
                     :original_publisher_place, :original_title, :page_first, :part, :part_title, :printing,
                     :reviewed_genre, :reviewed_title, :scale, :section, :short_title, :source, :status, :supplement,
                     :title_short, :version, :volume_title, :volume_title_short, :year_suffix
+
+      # #####################################################
+      # Utility methods
+      # ######################################################
+
+      # Mark current item as validated by the given item
+      # @param [Item] item
+      def validate_by(item)
+        raise "Argument must be a (subclass of) #{Item.class.name}" unless item.is_a? Item
+
+        source = item.custom.metadata_source
+        source_id = item.doi || item.custom.metadata_id
+
+        raise 'Cannot determine item source' if source.nil?
+
+        custom.validated_by.merge!({ source => source_id })
+      end
+
+      def validated?
+        !custom.validated_by.empty?
+      end
+
+      def year
+        issued.to_year
+      end
+
+      # Return an array of Creator items which are either the authors or in case of edited collections,
+      # the editors
+      # @return [Array<Creator>]
+      def creators
+        author || editor || []
+      end
+
+      # return an array of arrays [[family, given], ...] with the family
+      # names and the given names of the creators (author OR editor) entry.
+      # @return [Array<[Array, Array]>]
+      def creator_names
+        creators.map(&:family_and_given)
+      end
+
+      # return an array with author, year and title
+      # @param [Boolean] downcase
+      # @return [Array<String, Integer, String>]
+      def creator_year_title(downcase: false)
+        first_creator = creator_names.first&.first
+        if downcase
+          [first_creator&.downcase, year, title&.downcase]
+        else
+          [first_creator, year, title]
+        end
+      end
 
       private
 

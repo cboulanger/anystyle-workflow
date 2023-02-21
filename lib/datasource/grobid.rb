@@ -3,14 +3,14 @@
 require 'nokogiri'
 
 module Datasource
-  class Grobid
+  class Grobid < Datasource
     CSL_CUSTOM_FIELDS = [
       AUTHOR_AFFILIATIONS = 'grobid-author-affiliations'
     ].freeze
 
     class << self
-      attr_accessor :verbose
 
+      # @return [Array<Item>]
       def import_items_by_doi(dois, include_references: false, include_abstract: false)
         dois.map do |doi|
           file_name = doi.sub('/', '_')
