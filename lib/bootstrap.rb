@@ -17,17 +17,15 @@ require 'ruby-progressbar'
 require 'json'
 require 'csv'
 
-# refactor this with require_all
+require './lib/cache'
 require './lib/utils'
 require './lib/logger'
-require './lib/format'
+require_all './lib/format/*.rb'
 require './lib/datasource'
-#require './lib/models'
-require './lib/datamining/anystyle'
-require './lib/matcher'
-require './lib/export/wos'
-
+require_all './lib/datamining/*.rb'
+require_all './lib/export/*.rb'
 require_all './lib/nlp/*.rb'
 require_all './lib/workflow/*.rb'
+#require './lib/models'
+#require_all './lib/matcher/*.rb'
 
-require './lib/cache'

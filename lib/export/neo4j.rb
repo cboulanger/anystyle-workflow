@@ -1,5 +1,5 @@
 module Export
-  class Neo4j
+  class Neo4j < Exporter
     class << self
       def to_neo4j
         Datasource::Neo4j.connect

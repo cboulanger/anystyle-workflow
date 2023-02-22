@@ -238,15 +238,15 @@ if ARGV.include? 'export'
   limit = ARGV[(ARGV.index(arg_name) + 1)].to_i if ARGV.include? arg_name
 
 
-  Workflow::Export.public_send("to_#{format}",
-                               export_file_path:,
-                               verbose: ARGV.include?('--verbose'),
-                               compact: !ARGV.include?('--no-compact'),
-                               text_dir:,
-                               remove_list: remove_list || [],
-                               encoding: encoding || 'utf-8',
-                               limit:,
-                               use_cache: !ARGV.include?('--no-cache'))
+  Workflow::Dataset.public_send("to_#{format}",
+                                export_file_path:,
+                                verbose: ARGV.include?('--verbose'),
+                                compact: !ARGV.include?('--no-compact'),
+                                text_dir:,
+                                remove_list: remove_list || [],
+                                encoding: encoding || 'utf-8',
+                                limit:,
+                                use_cache: !ARGV.include?('--no-cache'))
 end
 
 if ARGV.include? 'import-metadata'

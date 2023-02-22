@@ -23,7 +23,7 @@ end
 
 def test2
   doi = "10.1111/1467-6478.00033"
-  items = Workflow::Export.merge_and_validate(doi, verbose: true)
+  items = Workflow::Dataset.merge_and_validate(doi, verbose: true)
   File.write("tmp/test2.json", JSON.pretty_generate(items.to_h))
 end
 

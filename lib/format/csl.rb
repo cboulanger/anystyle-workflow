@@ -5,12 +5,7 @@ module Format
   # non-standard vendor extension or those defined by this app
   module CSL
 
-    CSL_FIELDS = [
-      FIELD_CUSTOM = 'custom'
-    ].freeze
-
     CUSTOM_FIELDS = [
-      CUSTOM_VALIDATED_BY = 'validated-by',
       CUSTOM_GENERATED_KEYWORDS = 'x-generated-keywords'
     ].freeze
 
@@ -211,7 +206,7 @@ module Format
       # @!attribute validated_by
       # @return [Hash<{String => Item}>
       attr_accessor :times_cited, :validated_by, :metadata_source, :metadata_id, :metadata_api_url,
-                    :reference_data_source, :cited_by_api_url, :container_id
+                    :reference_data_source, :cited_by_api_url, :container_id, :generated_keywords
 
     end
 
@@ -250,6 +245,7 @@ module Format
 
       def author=(authors)
         raise 'author data must be an array' unless authors.is_a?(Array)
+
         @author = authors.map do |creator|
           case creator
           when CSL::Creator
@@ -262,6 +258,7 @@ module Format
 
       def editor=(editors)
         raise 'Value must be an array' unless editors.is_a?(Array)
+
         @editor = editors.map do |creator|
           case creator
           when CSL::Creator
