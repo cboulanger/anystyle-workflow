@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-#require 'damerau-levenshtein'
-#require 'text/levenshtein'
+# require 'damerau-levenshtein'
+# require 'text/levenshtein'
 require 'matrix'
 
 module Format
@@ -22,13 +22,15 @@ module Format
       end
 
       # Given a CSL item, return an array of arrays with family and given name
+      # @param [Format::CSL::Item] item
+      # @return [Array<String>]
       def to_au(item, initialize_given_names: true, separator: ', ')
-        creator_names = get_csl_creator_names(item)
+        creator_names = item.creator_names
         return [] unless creator_names.is_a?(Array) && creator_names.length.positive?
 
         creator_names.map do |family, given|
           if initialize_given_names
-            initials = initialize_given_name(given || '')
+            initials = Workflow::Utils.initialize_given_name(given || '')
             [family, initials].reject(&:nil?).join(separator).strip || 'UNKNOWN'
           else
             [family, given].reject(&:nil?).join(separator).strip || 'UNKNOWN'
@@ -36,16 +38,20 @@ module Format
         end
       end
 
-      def to_af(csl_item)
-        to_au(csl_item, initialize_given_names: false)
+      # @param [Format::CSL::Item] item
+      # @return [Array<String>]
+      def to_af(item)
+        to_au(item, initialize_given_names: false)
       end
 
-      def to_cr_au(csl_item)
-        to_au(csl_item, separator: ' ').first
+      # @param [Format::CSL::Item] item
+      def to_cr_au(item)
+        to_au(item, separator: ' ').first
       end
 
-      def to_dt(csl_type)
-        case csl_type
+      # @param [Format::CSL::Item] item
+      def to_dt(item)
+        case item.type
         when 'journal-article'
           'Article'
         when 'book'
@@ -57,8 +63,9 @@ module Format
         end
       end
 
-      def to_pt(csl_type)
-        case csl_type
+      # @param [Format::CSL::Item] item
+      def to_pt(item)
+        case item.type
         when 'journal-article'
           'J'
         when 'book'
@@ -70,121 +77,119 @@ module Format
         end
       end
 
+      # @param [Format::CSL::Item] item
       def to_pd(item)
-        get_csl_date(item)
+        item.issued.to_s
       end
 
+      # @param [Format::CSL::Item] item
       def to_py(item)
-        get_csl_year(item)
+        item.year
       end
 
-      def add_abbreviations(string)
+      def apply_abbreviations(string)
         string
           .sub(/journal/i, 'J')
           .sub(/review/i, 'Rev')
           .sub(/university/i, 'Univ')
       end
 
-      def create_cr_entry(item, add_ref_source: false)
+      # @param [Format::CSL::Item] item
+      def create_cr_entry(item)
         cit = []
         cit.append(to_cr_au(item))
         cit.append(to_py(item))
-        if item['container-title']
-          cit.append(item['container-title'])
-          cit.append("V#{item['volume']}") if item['volume']
-          cit.append("P#{item['page'].scan(/\d+/).first}") if item['page']
-          cit.append("DOI #{to_di(item['DOI'])}") if item['DOI']
+        if item.container_title
+          cit.append(item.container_title)
+          cit.append("V#{item.volume}") if item.volume
+          cit.append("P#{item.page.scan(/\d+/).first}") if item.page
+          cit.append("DOI #{to_di(item)}") if item.doi
         else
-          cit.append(item['title'])
-          cit.append("ISBN #{item['ISBN']}") if item['ISBN']
+          cit.append(item.title)
+          cit.append("ISBN #{item.isbn}") if item.isbn
         end
-        cit.append "SOURCE #{item['source']}" if add_ref_source && (item['source'])
-        add_abbreviations(cit.join(', '))
+        apply_abbreviations(cit.join(', '))
       end
 
+      # @param [Format::CSL::Item] item
       def to_ut(item)
-        item['DOI'] || item['ISBN'].scan(/\d+/)&.first || "#{to_cr_au(item)} #{to_pd(item)}"
+        item.doi || item.isbn.scan(/\d+/)&.first || "#{to_cr_au(item)}_#{to_pd(item)}"
       end
 
-      def titleize_if_uppercase(text)
-        text.split(' ').map { |w| w.match(/^[\p{Lu}\p{P}]+$/) ? w.capitalize : w }.join(' ')
+      # @param [Format::CSL::Item] item
+      # @return [Array<String>]
+      def to_cr(item)
+        item.x_references
+            .select { |item| to_au(item).length.positive? }
+            .map { |item| create_cr_entry(item) }
+            .map(&:downcase).uniq.sort
       end
 
-      def create_cr_field(references, add_ref_source: false)
-        references
-          .select { |ref| to_au(ref).length.positive? }
-          .map { |ref| create_cr_entry(ref, add_ref_source:) }
-          .map(&:downcase).uniq.sort
+      # @param [Format::CSL::Item] item
+      # @return [String]
+      def to_nr(item)
+        item.x_references.length.to_s
       end
 
-      def get_affiliations(csl_item)
-        affs = CUSTOM_AUTHORS_AFFILIATIONS_FIELDS.map { |f| csl_item.dig('custom', f) }.reject(&:nil?)
-        affs.length.positive? ? Array(affs.first) : []
+      # @param [Format::CSL::Item] item
+      # @return [Array<Format::CSL::Affiliation>]
+      def get_affiliations(item)
+        item.creators.map { |c| c.x_affiliations }
       end
 
       # C1 [Milojevic, Stasa; Sugimoto, Cassidy R.; Dinga, Ying] Indiana Univ, Sch Informat & Comp, Bloomington, IN 47405 USA.
       #    [Lariviere, Vincent] Univ Montreal, Ecole Bibliothecon & Sci Informat, Montreal, PQ H3C 3J7, Canada.
       #    [Thelwall, Mike] Wolverhampton Univ, Sch Technol, Wolverhampton WV1 1LY, W Midlands, England.
-      def to_c1(csl_item)
-        affs = get_affiliations(csl_item)
-        to_af(csl_item).map.with_index do |author, i|
-          aff = affs[i]
-          case aff
-          when Hash
-            org = aff['organization']
-            org = org.first if org.is_a?(Array)
-            country = aff['country']
-            aff_str = "#{org},#{country}"
-          when String
-            aff_str = aff
-          else
-            aff_str = 'unknown affiliation'
-          end
-          "[#{author}] #{aff_str}."
+      # @param [Format::CSL::Item] item
+      # @return [Array<String>]
+      def to_c1(item)
+        affs = get_affiliations(item)
+        to_af(item).map.with_index do |author, i|
+          aff = affs[i]&.first
+          next if aff.nil?
+          aff_arr = [aff.institution, aff.department, aff.center, aff.address, aff.country].compact.reject(&:empty?)
+          aff_str = aff_arr.length.positive? ? aff_arr.join(', ') : aff.literal
+          "[#{author}] #{aff_str}." unless aff_str.empty?
         end
       end
 
       # RP Milojevic, S (reprint author), Indiana Univ, Sch Informat & Comp, Bloomington, IN 47405 USA.
-      def to_rp(csl_item)
-        affs = get_affiliations(csl_item)
-        author = to_au(csl_item)&.first
-        return if author.nil?
+      # @param [Format::CSL::Item] item
+      def to_rp(item)
+        author = to_au(item).first
+        aff = get_affiliations(item).first&.first
+        return unless author && aff
 
-        aff = affs.first
-        case aff
-        when Hash
-          org = aff['organization']
-          org = org.first if org.is_a?(Array)
-          country = aff['country']
-          "#{author} #{org},#{country}."
-        when String
-          "#{author} (reprint author), #{aff}."
-        else
-          "#{author} (reprint author),unknown affiliation."
-        end
+        aff_arr = [aff.institution, aff.department, aff.center, aff.address, aff.country].compact.reject(&:empty?)
+        aff_str = aff_arr.length.positive? ? aff_arr.join(', ') : aff.literal
+        "#{author} (reprint author), #{aff_str}."
       end
 
-      def to_di(doi)
-        doi.sub(%r{^https?://doi.org/}, '')
+      # @param [Format::CSL::Item] item
+      # @return [String]
+      def to_di(item)
+        item.doi.sub(%r{^https?://doi.org/}, '')
       end
 
-      def to_tc(csl_item)
-        tc = {}
-        CUSTOM_TIMES_CITED_FIELDS.each { |f| tc[f] = csl_item.dig('custom', f)&.to_i || 0 }
-        tc.values.max.to_s
+      # @param [Format::CSL::Item] item
+      def to_tc(item)
+        item.custom.times_cited
       end
 
-      def to_ab(abstract, width: 80)
-        abstract.gsub(/(.{1,#{width}})(\s+|\Z)/, "\\1\n").split("\n")
+      # @param [Format::CSL::Item] item
+      def to_ab(item, width: 80)
+        item.abstract.gsub(/(.{1,#{width}})(\s+|\Z)/, "\\1\n").split("\n")
       end
 
-      def to_de(csl_item)
-        kw = csl_item['keyword']
+      # @param [Format::CSL::Item] item
+      def to_de(item)
+        kw = item.keyword
         Array(kw).join('; ') unless kw.nil?
       end
 
-      def to_id(csl_item)
-        id = csl_item.dig('custom', CUSTOM_GENERATED_KEYWORDS)
+      # @param [Format::CSL::Item] item
+      def to_id(item)
+        id = item.custom.generated_keywords
         Array(id).join('; ') unless id.nil?
       end
 
@@ -205,42 +210,46 @@ module Format
       # SC 	Subject Category
       # UT 	Unique Article Identifier
       # DB 	Bibliographic Database
+      #
+      # @param [Format::CSL::Item] item
+      # @param [String, nil] na
+      # @param [Boolean] compact
+      # @param [Boolean] add_ref_source
       def create_record(item, na: nil, compact: true, add_ref_source: false)
-        references = item['reference'] || []
         fields = {
-          "PT": to_pt(item['type']),
+          "PT": to_pt(item),
           "AU": to_au(item),
           "AF": to_af(item),
-          "TI": item['title'],
-          "SO": item['container-title'],
-          "LA": item['language'],
-          "DT": to_dt(item['type']),
+          "TI": item.title,
+          "SO": item.container_title,
+          "LA": item.language,
+          "DT": to_dt(item),
           "DE": to_de(item),
           "ID": to_id(item),
-          "AB": to_ab(item['abstract']),
+          "AB": to_ab(item),
           "C1": to_c1(item),
           "RP": to_rp(item),
           "EM": na,
           "RI": na,
-          "BN": item['ISBN'],
-          "CR": create_cr_field(references, add_ref_source:),
-          "NR": references.length,
+          "BN": item.isbn,
+          "CR": to_cr(item),
+          "NR": to_nr(item),
           "TC": to_tc(item),
           "Z9": 0,
           "PU": na,
           "PI": na,
           "PA": na,
-          "SN": item['ISSN']&.first,
-          "EI": item['ISSN']&.last,
-          "J9": item['type'] == 'journal-article' ? item['container-title'] : na,
+          "SN": item.issn&.first,
+          "EI": item.issn&.last,
+          "J9": item.type == 'journal-article' ? item.container_title : na,
           "JI": na,
           "PD": to_pd(item),
           "PY": to_py(item),
-          "VL": item['volume'],
-          "IS": item['issue'],
-          "BP": item['page']&.scan(/\d+/)&.first,
-          "EP": item['page']&.scan(/\d+/)&.last,
-          "DI": to_di(item['DOI']),
+          "VL": item.volume,
+          "IS": item.issue,
+          "BP": item.page&.scan(/\d+/)&.first,
+          "EP": item.page&.scan(/\d+/)&.last,
+          "DI": to_di(item),
           "PG": 0,
           "WC": na,
           "SC": na,

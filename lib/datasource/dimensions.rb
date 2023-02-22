@@ -89,7 +89,7 @@ module Datasource
 
       # interface method
       # @return [Array<Item>]
-      def import_items_by_doi(dois, include_references: false, include_abstract: false, reset_cache: false)
+      def import_items(dois, include_references: false, include_abstract: false, reset_cache: false)
         @cache ||= Cache.load('dimensions', use_literal: true)
         if @cache && !reset_cache
           puts " - Getting data for #{dois.join(',')} from cache..." if verbose

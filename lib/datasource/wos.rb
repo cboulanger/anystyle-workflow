@@ -8,7 +8,7 @@ module Datasource
     ].freeze
 
     class << self
-      def import_items_by_doi(dois)
+      def import_items(dois)
         @cache ||= ::Datasource.get_vendor_data(['wos'])['wos']
         dois.map { |doi| Item.new(@cache[doi.sub('/', '_')]) }
       end

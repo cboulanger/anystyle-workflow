@@ -11,7 +11,7 @@ module Datasource
     class << self
 
       # @return [Array<Item>]
-      def import_items_by_doi(dois, include_references: false, include_abstract: false)
+      def import_items(dois, include_references: false, include_abstract: false)
         dois.map do |doi|
           file_name = doi.sub('/', '_')
           file_path = File.join(Workflow::Path.grobid_tei, "#{file_name}.tei.xml")

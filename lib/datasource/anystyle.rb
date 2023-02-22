@@ -2,13 +2,14 @@ module Datasource
   class Anystyle < Datasource
     class << self
       # @return [Array<Item>]
-      def import_items_by_doi(dois, include_references: false, include_abstract: false)
-        dois.map do |doi|
-          # use crossref item as base
+      def import_items(ids, include_references: false, include_abstract: false)
+        ids.map do |id|
+          # use crossref item for metadata
           Crossref.verbose = self.verbose
-          data = Crossref.import_items_by_doi([doi], include_references: false).first.to_h
+          doi = id.sub('_', '/')
+          data = Crossref.import_items([doi], include_references: false).first.to_h
           item = Item.new(data)
-          file_path = File.join(::Workflow::Path.csl, "#{doi.sub('/', '_')}.json")
+          file_path = File.join(::Workflow::Path.csl, "#{id.sub('/', '_')}.json")
           next unless File.exist?(file_path)
 
           item.x_references = JSON.load_file(file_path).map { |ref| Item.new(ref) }
@@ -24,6 +25,10 @@ module Datasource
         data.delete('signal')
         data.delete('backref')
         super data
+      end
+
+      def legal_ref=(ref)
+        self.references = ref
       end
     end
   end

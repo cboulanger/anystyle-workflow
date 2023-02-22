@@ -158,13 +158,13 @@ module Workflow
         end
 
         # vendor data
-        vendor_cache = ::Datasource.get_vendor_data
         vendors = vendor_cache.keys
         columns += vendors
-        crossref_meta = vendor_cache['crossref']
-        raise 'CrossRef metadata is required' unless crossref_meta
 
+        # columns row
         stats.append columns
+
+        # iterate over files
         puts "Analysing #{files.length} files..." if verbose
         files.each do |file_path|
           file_name = File.basename(file_path, '.json')
@@ -176,11 +176,11 @@ module Workflow
             progressbar.increment unless verbose
           end
 
-          crossref_item = crossref_meta[file_name]
+          crossref_item = Datasource::Crossref.import_items([doi]).first
           raise "No metadata for #{file_name}" if crossref_item.nil?
 
-          year = get_csl_year(crossref_item)
-          journal_abbrv = crossref_meta[file_name]['container-title'].scan(/\S+/).map { |w| w[0] }.join
+          year = crossref_item.year
+          journal_abbrv = crossref_item.container_title.scan(/\S+/).map { |w| w[0] }.join
           row = [file_name, journal_abbrv, year]
 
           case type
@@ -196,37 +196,18 @@ module Workflow
             row.append(File.exist?(pf_path) ? JSON.load_file(pf_path).length : nil)
             # vendor data
             vendors.each do |vendor|
-              ref = vendor_cache.dig(vendor, file_name)
-              ref = ref.first if ref.is_a? Array
-              ref = ref['reference'] if ref.is_a? Hash
-              row.append(ref.is_a?(Array) ? ref.length : 0)
+              vendor_refs = Datasource.get_provider_by_name(vendor).import_items([doi]).first&.x_references
+              row.append(vendor_refs.is_a?(Array) ? vendor_refs.length : 0)
             end
           else
             # vendor data only
             vendors.each do |vendor|
-              ref = vendor_cache.dig(vendor, file_name) || ref = vendor_cache.dig(vendor, doi)
-              ref = refs.first if ref.is_a? Array
-              num_affiliations = if ref.nil?
-                                   puts " - #{vendor}: No entry for '#{file_name}'" if verbose
-                                   0
-                                 else
-                                   author = ref['author'] || []
-                                   case vendor
-                                   when 'grobid'
-                                     author.reject { |a| a[Datasource::Grobid::AUTHOR_AFFILIATIONS].nil? }
-                                   when 'openalex'
-                                     author.reject { |a| a[Datasource::OpenAlex::AUTHORS_AFFILIATION_LITERAL].empty? }
-                                   when 'crossref'
-                                     author.reject { |a| a['affiliation'].empty? }
-                                   when 'dimensions'
-                                     ref['custom'][Datasource::Dimensions::AUTHORS_AFFILIATIONS] || []
-                                   when 'wos'
-                                     ref['custom'][Datasource::Wos::AUTHORS_AFFILIATIONS] || []
-                                   else
-                                     raise "Unhandled vendor #{vendor}"
-                                   end.length
-                                 end
-              row.append(num_affiliations)
+              # @type [Format::CSL::Item]
+              vendor_item = Datasource.get_provider_by_name(vendor).import_items([doi]).first
+              return 0 if vendor_item.nil?
+
+              num_aff = vendor_item.creators.reduce(0) {|sum, c| sum + c.x_affiliations&.length || 0 }
+              row.append(num_aff)
             end
           end
           # write row

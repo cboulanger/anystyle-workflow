@@ -9,12 +9,13 @@ module Datasource
       @base_url = 'https://openlibrary.org'
       
       def query(name, title, date)
-        name = Datasource.author_name_family(name)
-        title_keywords = Datasource.title_keywords(title)
-        lookup_string = "q=author:\"#{name}\" title:\"#{title_keywords}\" publish_year:#{date}"
-        url = @base_url + '/search.json?' + ERB::Util.url_encode(lookup_string)
-        $logger.debug "Searching openlibrary.org: #{url}..."
-        HTTPX.get(url).json
+        raise 'must be reimplemented'
+        # name = Datasource.author_name_family(name)
+        # title_keywords = Datasource.title_keywords(title)
+        # lookup_string = "q=author:\"#{name}\" title:\"#{title_keywords}\" publish_year:#{date}"
+        # url = @base_url + '/search.json?' + ERB::Util.url_encode(lookup_string)
+        # $logger.debug "Searching openlibrary.org: #{url}..."
+        # HTTPX.get(url).json
       end
 
       def exists(name, title, date)

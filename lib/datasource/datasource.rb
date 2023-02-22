@@ -48,9 +48,10 @@ module Datasource
         all_items = []
         datasources.map do |ds|
           resolver = get_provider_by_name(ds)
-          if id =~ /^10./ && resolver.respond_to?(:import_items_by_doi)
+          if id =~ /^10./ && resolver.respond_to?(:import_items)
             resolver.verbose = verbose
-            found_items = resolver.import_items_by_doi([id], include_references: true, include_abstract: true)
+            doi = id.sub('_','/')
+            found_items = resolver.import_items([doi], include_references: true, include_abstract: true)
             all_items.append(found_items.first) if found_items.length.positive?
             puts " - Data imported." if verbose
           else
@@ -61,7 +62,7 @@ module Datasource
       end
 
       # @return [Array<Format::CSL::Item>]
-      def import_items_by_doi(*)
+      def import_items(*)
         raise 'Method must be implemented by subclass'
       end
     end

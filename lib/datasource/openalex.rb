@@ -2,42 +2,37 @@
 
 require 'httpx'
 require 'erb'
+require 'throttle'
 
 module Datasource
   class OpenAlex < Datasource
 
-    CSL_CUSTOM_FIELDS = [
-      TIMES_CITED = 'openalex-cited-by-count',
-      AUTHORS_AFFILIATIONS = 'openalex-authors-affiliations',
-      AUTHORS_INSTITUTIONS = 'openalex-institutions',
-      AUTHORS_AFFILIATION_LITERAL = 'openalex-raw-affiliation-string'
-    ].freeze
+    HTTPX::Plugins.load_plugin(:follow_redirects)
+    HTTPX::Plugins.load_plugin(:retries)
+    HTTPX::Plugins.load_plugin(:rate_limiter)
 
-    @email ||= ENV['API_EMAIL']
+    @email ||= ENV['API_EMAIL'] || raise('Email is required for OpenAlex')
     @batch_size = 100
     @base_url = 'http://openalex.org'
     @base_api_url = 'http://api.openalex.org'
     @entity_types = %w[work author institution venue]
+    @headers = {
+      'Accept' => 'application/json',
+      'User-Agent' => "requests mailto:#{@email}"
+    }
+    @http = HTTPX.plugin(:follow_redirects, follow_insecure_redirects: true)
+                 .plugin(:retries, retry_after: 2, max_retries: 10)
+                 .plugin(:rate_limiter)
+                 .with(timeout: { operation_timeout: 10 })
+                 .with(headers:@headers)
 
     class << self
-
-      HTTPX::Plugins.load_plugin(:follow_redirects)
-      HTTPX::Plugins.load_plugin(:retries)
 
       attr_accessor :email, :batch_size
       attr_accessor :verbose
 
-      def headers
-        raise 'No email address configured' unless email
-
-        {
-          'Accept' => 'application/json',
-          'User-Agent' => "requests mailto:#{@email}"
-        }
-      end
-
       def raise_api_error(url, response)
-        raise "#{url} returned 404 page not found" if response.status == 404
+        #raise "#{url} returned 404 page not found" if response.status == 404
         if response.error
           error = 'Connection error'
           message = response.error.to_s
@@ -70,11 +65,7 @@ module Datasource
         url = "#{@base_api_url}/#{entity_type}s/#{entity_id}"
         if (entity = Cache.load(url)).nil?
           puts " - Requesting #{url}" if verbose
-          http = HTTPX.plugin(:follow_redirects, follow_insecure_redirects: true)
-                      .plugin(:retries, retry_after: 2, max_retries: 10)
-                      .with(timeout: { operation_timeout: 10 })
-                      .with(headers:)
-          response = http.get(url)
+          response = @http.get(url)
           raise_api_error(url, response) if response.error || response.status >= 400
           entity = response.json
           Cache.save(url, entity)
@@ -120,7 +111,7 @@ module Datasource
       # Given an array of DOIs, return their metadata in CSL-JSON format
       # @param [Array] dois
       # @return [Array<Item>]
-      def import_items_by_doi(dois, include_references: false, include_abstract: false)
+      def import_items(dois, include_references: false, include_abstract: false)
         dois.map do |doi|
           data = get_single_entity('work', "doi:#{doi}")
           data.delete('referenced_works') unless include_references
@@ -266,98 +257,6 @@ module Datasource
           Creator.new(data)
         end
       end
-
-      # ######################################################################
-      # deprecated methods
-      # ######################################################################
-
-      # Given a "publication-date" entry, return a CSL date value
-      def parse_date(date)
-        {
-          "date-parts": date.split('-')
-        }
-      end
-
-      # Given a OpenAlex/CrossRef item type, return its CSL equivalent
-      # incomplete!
-      def parse_type(type)
-        case type
-        when 'journal-article'
-          'article-journal'
-        when 'book-section'
-          'chapter'
-        else
-          type
-        end
-      end
-
-      # Given an openalex "authorships" object, return the CSL-JSON
-      # "author" field data
-      def parse_author(authorships)
-        authorships.map do |author|
-          {
-            "literal": author['author']['display_name'],
-            "orcid": author['author']['orcid'],
-            "#{AUTHORS_INSTITUTIONS}": author['institutions'],
-            "#{AUTHORS_AFFILIATION_LITERAL}": author['raw_affiliation_string'],
-            "openalex-author-id": author['author']['id']
-          }
-        end
-      end
-
-      def parse_page(entity)
-        e = entity
-        first_page = e['biblio']['first_page']
-        last_page = e['biblio']['last_page']
-        return nil unless first_page && last_page
-
-        "#{first_page}-#{last_page}"
-      end
-
-      def parse_reference(entity)
-        rw = entity['referenced_works']
-        puts ' - Retrieving references...' if verbose
-        rw.map do |openalex_id|
-          entity_to_csl(get_single_entity('work', openalex_id))
-        end
-      end
-
-      def parse_abstract(entity)
-        ii = entity['abstract_inverted_index']
-        return if ii.nil?
-
-        text = []
-        ii.each { |word, list| list.each { |i| text[i] = word } }
-        text.join(' ')
-      end
-
-      # Given an API entity response, return CSL-JSON data
-      # @param [Hash] entity
-      def entity_to_csl(entity, include_references: false, include_abstract: false)
-        e = entity
-        item = {
-          "custom": {
-            "openalex-id": get_short_id(e['id']),
-            "openalex-cited-by-count": e['cited_by_count'],
-            "openalex-counts-by-year": e['counts_by_year']
-          },
-          "DOI": e['doi'],
-          "title": e['title'],
-          "issued": [parse_date(e['publication_date'])],
-          "container-title": e['host_venue']['display_name'],
-          "type": parse_type(e['type']),
-          "author": parse_author(e['authorships']),
-          "volume": e['biblio']['volume'],
-          "issue": e['biblio']['issue'],
-          "page": parse_page(e)
-        }
-        item['reference'] = parse_reference(e) if include_references
-        item['abstract'] = parse_abstract(e) if include_abstract
-        item.delete_if { |_k, v| v.nil? }
-        item
-      end
-
     end
-
   end
 end

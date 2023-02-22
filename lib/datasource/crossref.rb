@@ -18,17 +18,18 @@ module Datasource
     class << self
 
       def query(name, title, date)
-        name = Format::CSL.author_name_family(name)
-        title_keywords = Format::CSL.title_keywords(title)
-        args = {
-          query_author: name,
-          query_bibliographic: "#{title_keywords} #{date}",
-          select: 'author, title, issued, DOI'
-        }
-        puts "Querying crossref with #{JSON.pretty_generate(args)}" if verbose
+        raise 'must be reimplemented'
+        # name = Format::CSL.author_name_family(name)
+        # title_keywords = Format::CSL.title_keywords(title)
+        # args = {
+        #   query_author: name,
+        #   query_bibliographic: "#{title_keywords} #{date}",
+        #   select: 'author, title, issued, DOI'
+        # }
+        # puts "Querying crossref with #{JSON.pretty_generate(args)}" if verbose
         response = Serrano.works(**args)
         #puts"Response:#{JSON.pretty_generate(response)}" if verbose
-        response
+        # response
       end
 
       def exists(name, title, date)
@@ -38,11 +39,11 @@ module Datasource
 
       def lookup(name, title, date)
         data = query(name, title, date)
-        import_items_by_doi(data['message'].map { |item| item['DOI'] })
+        import_items(data['message'].map { |item| item['DOI'] })
       end
 
       # @return [Array<Item>]
-      def import_items_by_doi(dois, include_references: true, include_abstract: true)
+      def import_items(dois, include_references: true, include_abstract: true)
         raise 'dois must be Array' unless dois.is_a? Array
 
         items = Cache.load(dois)
