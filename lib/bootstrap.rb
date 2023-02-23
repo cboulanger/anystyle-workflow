@@ -16,9 +16,9 @@ PyCall.sys.path.append('./pylib')
 require 'ruby-progressbar'
 require 'json'
 require 'csv'
+require 'colorize'
 
 require './lib/cache'
-require './lib/utils'
 require './lib/logger'
 require_all './lib/utils/*.rb'
 require_all './lib/format/*.rb'

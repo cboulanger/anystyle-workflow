@@ -24,12 +24,14 @@ module Datasource
         custom.reference_data_source = "anystyle"
         data.delete('signal')
         data.delete('backref')
+        data.delete('ignore')
         super data
       end
 
       def legal_ref=(ref)
         self.references = ref
       end
+
     end
   end
 end

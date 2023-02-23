@@ -24,7 +24,7 @@ module Datasource
                  .plugin(:retries, retry_after: 2, max_retries: 10)
                  .plugin(:rate_limiter)
                  .with(timeout: { operation_timeout: 10 })
-                 .with(headers:@headers)
+                 .with(headers: @headers)
 
     class << self
 
@@ -156,7 +156,7 @@ module Datasource
 
         def id=(id)
           self.x_affiliation_id = id
-          self.x_affiliation_api_url = id.gsub('https://', 'https://api.')
+          self.x_affiliation_api_url = id&.gsub('https://', 'https://api.')
         end
 
         # ignore type attr

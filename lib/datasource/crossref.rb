@@ -130,6 +130,9 @@ module Datasource
           end
         end
       end
+
+      def published_online=(*); end
+
     end
   end
 end

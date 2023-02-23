@@ -10,7 +10,10 @@ module Datasource
     class << self
       def import_items(dois)
         @cache ||= ::Datasource.get_vendor_data(['wos'])['wos']
-        dois.map { |doi| Item.new(@cache[doi.sub('/', '_')]) }
+        dois.map do |doi|
+          data = @cache[doi.sub('/', '_')]
+          data && Item.new(data)
+        end
       end
     end
 

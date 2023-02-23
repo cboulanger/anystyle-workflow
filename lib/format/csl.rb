@@ -5,8 +5,8 @@ module Format
   # non-standard vendor extension or those defined by this app
   module CSL
 
-    CUSTOM_FIELDS = [
-      CUSTOM_GENERATED_KEYWORDS = 'x-generated-keywords'
+    CSL_TYPES =[
+      JOURNAL_ARTICLE = "journal-article"
     ].freeze
 
     class Object
@@ -21,7 +21,7 @@ module Format
           if respond_to? method_name
             public_send(method_name, v)
           else
-            STDERR.puts "#{self.class.name}: Ignoring unsupported attribute '#{k}'"
+            STDERR.puts "#{self.class.name}: Ignoring unsupported attribute '#{k}'".colorize(:red)
           end
         end
       end
@@ -96,7 +96,7 @@ module Format
       # Returns the date's year as an integer, if available, otherwise nil
       # @return [Integer]
       def to_year
-        (@date_parts.first&.first || @raw.scan(/\d{4}/)&.first)&.to_i
+        (@date_parts&.first&.first || @raw&.scan(/\d{4}/)&.first)&.to_i
       end
 
     end
@@ -129,10 +129,6 @@ module Format
           end
         end
       end
-
-      # #################################################
-      # Utility methods
-      # #################################################
 
       def family_and_given
         if family
@@ -331,8 +327,20 @@ module Format
       end
 
       # other metadata
-      attr_accessor :authority, :citation_number, :doi, :isbn, :issn, :url, :abstract, :categories, :citation_key,
-                    :edition, :issue, :journal_abbreviation, :keyword, :language, :locator, :note,
+
+      # @!attribute keyword
+      # @return [Array]
+      def keyword
+        return @keyword || []
+      end
+
+      def keyword=(keywords)
+        raise "Argument must be Array" unless keywords.is_a? Array
+        @keyword = keywords
+      end
+
+      attr_accessor :authority, :citation_number, :doi, :isbn, :issn, :url, :abstract, :citation_key,
+                    :edition, :issue, :journal_abbreviation, :language, :locator, :note,
                     :page, :publisher, :publisher_place, :references, :volume
 
       # currently not actively supported, although data can be stored
@@ -348,7 +356,7 @@ module Format
 
       # other metadata
       attr_accessor :pmcid, :pmid, :annote, :archive, :archive_collection, :archive_location, :archive_place,
-                    :call_number, :chapter_number, :citation_label, :collection_number,
+                    :call_number, :categories, :chapter_number, :citation_label, :collection_number,
                     :collection_title, :container_title, :container_title_short, :dimensions, :division,
                     :event, :event_place, :event_title, :first_reference_note_number, :genre, :jurisdiction,
                     :medium, :number, :number_of_pages, :number_of_volumes, :original_publisher,

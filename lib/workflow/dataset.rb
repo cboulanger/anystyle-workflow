@@ -25,16 +25,18 @@ module Workflow
     #   Needed if abstracts and topics are missing in the metadata and should be generated automatically from the text
     # @!attribute [Array] remove_list An array of words that should be disregarded for auto-generating abstracts and keywords
     # @!attribute [Boolean] use_cache
-    # @!attribute [Boolean] generate_abstract
+    # @!attribute [Boolean] add_metadata_from_text
     # @!attribute [Array<String>] policies
     Options = Struct.new(
       :generate_abstract,
       :text_dir,
-      :remove_list,
+      :stopword_files,
       :generate_keywords,
       :verbose,
       :use_cache,
       :policies,
+      :authors_ignore_list,
+      :affiliation_ignore_list,
       keyword_init: true
     ) do
       def initialize(*)
@@ -43,6 +45,13 @@ module Workflow
         self.generate_keywords = true if generate_keywords.nil?
         self.use_cache = true if use_cache.nil?
         self.policies ||= [ADD_MISSING_ALL, ADD_UNVALIDATED, REMOVE_DUPLICATES, ADD_AFFILIATIONS]
+        self.authors_ignore_list ||= []
+        self.affiliation_ignore_list ||= []
+        raise "Invalid text_dir #{text_dir}" unless text_dir.nil? || Dir.exist?(text_dir)
+        return unless stopword_files.is_a?(Array) &&
+          (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
+
+        raise "The following stopword files do not exist or are not accessible: \n#{invalid.join("\n")}"
       end
     end
 
@@ -54,10 +63,12 @@ module Workflow
     def initialize(ids, options: {})
       @options = options || Workflow::Dataset::Options.new
       @ids = ids
+      @iso4 = PyCall.import_module('iso4')
+      @journal_abbreviations = {}
     end
 
     # @param [Integer] limit Limits the number of generated items (for test purposes)
-    def generate(limit:nil)
+    def generate(limit: nil)
       # use cache if it exists to speed up process,
       items_cache = (@options.use_cache && Cache.load(@ids, prefix: 'dataset-')) || {}
       items = []
@@ -70,7 +81,7 @@ module Workflow
       # iterate over CSL-JSON files in source directory
       @ids.each do |id|
 
-        progress_or_message "Processing #{id}\n#{'=' * 80}", increment: true
+        progress_or_message "Processing #{id}\n#{'=' * 80}".colorize(:blue), increment: true
 
         if @options.use_cache && (item_data = items_cache[id])
           # use the cached item if exists
@@ -86,16 +97,11 @@ module Workflow
 
         # add generated abstract and keywords if there are no in the metadata
         if @options.generate_abstract
-          if @options.text_dir.nil? || !Dir.exist?(@options.text_dir)
-            raise 'Missing/invalid text_dir option value needed for abstract generation'
-          end
           progress_or_message ' - Generating abstract and keywords from fulltext'
           txt_file_path = File.join(@options.text_dir, "#{id}.txt")
-          abstract, keyword = summarize_file(txt_file_path, ratio: 5, topics: true, remove_list: @options.remove_list)
-          item.abstract ||= abstract
-          item.keyword ||= keyword if @options.generate_keywords
+          text = File.read(txt_file_path, encoding: 'utf-8')
+          add_metadata_from_text(item, text)
         end
-
 
         # references
         references = item.x_references
@@ -103,12 +109,15 @@ module Workflow
         num_refs += n
         progress_or_message " - Found #{n} references"
 
+        # journal abbreviation
+        if item.type == Format::CSL::JOURNAL_ARTICLE && item.journal_abbreviation.nil?
+          add_journal_abbreviation(item)
+        end
+
         # keywords generated from references
         if @options.generate_keywords && n.positive?
-          reference_corpus = references.map { |ref| [ref.title, ref.abstract].compact.join(' ') }.join(' ')
-          _, kw = reference_corpus.summarize(topics: true)
-          item.custom.generated_keywords = kw.force_encoding('utf-8').split(',')
           progress_or_message ' - Adding reference-generated keywords '
+          add_reference_keywords(item)
         end
 
         items.append(item)
@@ -128,13 +137,13 @@ module Workflow
     # Export the dataset using the given exporter class
     # @param [Export::Exporter] exporter
     # @param [Integer] limit
-    def export(exporter, limit:nil)
+    def export(exporter, limit: nil)
       raise 'Argument must be an Export::Exporter subclass' unless exporter.is_a? Export::Exporter
 
       counter = 0
       total = [@items.length, limit || @items.length].min
-      progress_or_message "Exporting #{total} items to #{exporter.name}...", total:
-        exporter.start
+      progress_or_message("Exporting #{total} items to #{exporter.name}...", total:)
+      exporter.start
       @items.each do |item|
         counter += 1
         creator, year = item.creator_year_title
@@ -156,7 +165,7 @@ module Workflow
 
       raise 'Item id must be a DOI' unless item_id.start_with? '10.'
 
-      doi = item_id.sub('_','/')
+      doi = item_id.sub('_', '/')
       # get anystyle item (enriched with crossref metadata)
       # @type [Item]
       item = Datasource::Anystyle.import_items([doi]).first
@@ -179,16 +188,22 @@ module Workflow
         # @type [Format::CSL::Item]
         vendor_item = ::Datasource.get_provider_by_name(vendor).import_items([doi]).first
 
+        if vendor_item.nil?
+          puts " - #{vendor}: No data available".colorize(:red) if @options.verbose
+          next
+        end
+
         # add reference data
         # @type [Array<Format::CSL::Item>]
         vendor_refs = vendor_item.x_references
         num_vendor_added_refs = 0
 
         if policies.include?(DUMP_ALL)
+          # add all found references, this leads to a lot of duplicates
           validated_references += vendor_refs
           num_vendor_added_refs += vendor_refs.length
           if @options.verbose && vendor_refs.length.positive?
-            puts " - #{vendor}: added #{vendor_refs.length} references"
+            puts " - #{vendor}: added #{vendor_refs.length} references" if @options.verbose
           end
         else
           # match each anystyle reference against all vendor references since we cannot be sure they are in the same order
@@ -205,8 +220,15 @@ module Workflow
 
               # validate
               ref.validate_by(vendor_ref)
+
               # add affiliations
               add_affiliations(ref, vendor_ref, vendor)
+
+              # journal abbreviation
+              if ref.type == Format::CSL::JOURNAL_ARTICLE && ref.journal_abbreviation.nil?
+                add_journal_abbreviation(ref)
+              end
+
               # add only if reference hasn't been validated already
               unless ref.custom.validated_by.keys.count > 1
                 validated_references.append(ref)
@@ -225,6 +247,7 @@ module Workflow
             num_vendor_added_refs += 1
           end
         end
+
         if @options.verbose && num_vendor_added_refs.positive?
           puts " - #{vendor}: validated #{num_anystyle_validated_refs} anystyle references " \
                  "(of which #{num_anystyle_added_refs} were added), " \
@@ -234,9 +257,16 @@ module Workflow
         # use the highest "times-cited" value found
         item.custom.times_cited = [vendor_item.custom.times_cited || 0, item.custom.times_cited || 0].max
 
-        next unless policies.include?(ADD_AFFILIATIONS)
+        # add affiliation data if missing
+        add_affiliations(item, vendor_item, vendor) if policies.include?(ADD_AFFILIATIONS)
 
-        add_affiliations(item, vendor_item, vendor)
+        # add abstract if missing
+        item.abstract ||= vendor_item.abstract
+
+        # add keywords that don't exist yet
+        item.keyword = (item.keyword + vendor_item.keyword).compact.uniq
+
+        # end vendors.each
       end
 
       if policies.include?(ADD_UNVALIDATED)
@@ -245,6 +275,11 @@ module Workflow
 
           author, year = ref.creator_year_title(downcase: true)
           next if author.nil? || author.empty?
+
+          # ignore specific authors or false positives
+          next if @options.authors_ignore_list.any? do |expr|
+            expr.is_a?(Regexp) ? author.match(expr) : author == expr
+          end
 
           puts " - anystyle: Added unvalidated #{author} #{year}" if @options.verbose
           validated_references.append(ref)
@@ -257,7 +292,7 @@ module Workflow
         num_before = validated_references.length
         validated_references.uniq! { |item| item.creator_year_title(downcase: true) }
         num_removed = num_before - validated_references.length
-        puts " - removed #{num_removed} duplicate references" if num_removed.positive?
+        puts " - removed #{num_removed} duplicate references" if @options.verbose && num_removed.positive?
       end
 
       item.x_references = validated_references
@@ -265,28 +300,25 @@ module Workflow
       item
     end
 
-    private
-
-    def progress_or_message(message = nil, increment: false, total: 0, finish: false)
-      if @options.verbose
-        puts message if message
-      else
-        if @progressbar.nil?
-          @progressbar = ProgressBar.create(message, total:, **::Workflow::Config.progress_defaults)
-        elsif increment
-          @progressbar.increment
-        elsif finish
-          @progressbar.finish
-        end
-      end
-    end
-
+    # @param [Format::CSL::Item] item
+    # @param [Format::CSL::Item] vendor_item
+    # @param [String] vendor
     def add_affiliations(item, vendor_item, vendor)
       item.creators.each do |creator|
         vendor_item.creators.each do |vendor_creator|
           next if creator.family != vendor_creator.family
 
-          creator.x_raw_affiliation_string ||= vendor_creator.x_raw_affiliation_string
+          raw_affiliation = vendor_creator.x_raw_affiliation_string
+          # ignore specific affiliations or false positives
+          next if raw_affiliation && @options.affiliation_ignore_list.any? do |expr|
+            if expr.is_a?(Regexp)
+              raw_affiliation&.match(expr) || vendor_creator.x_affiliations&.any? { |a| a.literal.match(expr) }
+            else
+              raw_affiliation&.include?(expr) || vendor_creator.x_affiliations&.any? { |a| a.literal.include(expr) }
+            end
+          end
+
+          creator.x_raw_affiliation_string ||= raw_affiliation
           aff = creator.x_affiliations&.first&.to_h&.compact
           vendor_aff = vendor_creator.x_affiliations&.first&.to_h&.compact
           next if vendor_aff.nil?
@@ -297,6 +329,47 @@ module Workflow
           creator.x_affiliations = [Format::CSL::Affiliation.new(vendor_aff)]
           puts " - #{vendor}: Added affiliation data" if @options.verbose
         end
+      end
+    end
+
+    # @param [Format::CSL::Item] item
+    def add_journal_abbreviation(item)
+      journal_name = item.container_title
+      abbr = @journal_abbreviations[journal_name]
+      return abbr unless abbr.nil?
+
+      item.journal_abbreviation = @journal_abbreviations[journal_name] = @iso4.abbreviate(journal_name)
+    end
+
+    # This auto-generates an abstract and keywords and also adds a language if none has been set
+    # @param [Format::CSL::Item] item
+    # @param [String] text
+    def add_metadata_from_text(item, text)
+      abstract, keywords, language = summarize(text, ratio: 5, topics: true, stopword_files: @options.stopword_files)
+      item.abstract = abstract if item.abstract.nil? || item.abstract.empty?
+      item.keyword = keywords if @options.generate_keywords && item.keyword.empty?
+      item.language ||= language if language
+    end
+
+    # @param [Format::CSL:Item] item
+    def add_reference_keywords(item)
+      reference_corpus = item.x_references.map { |ref| [ref.title, ref.abstract].compact.join(' ') }.join(' ')
+      _, keywords = summarize(reference_corpus, topics: true, stopword_files: @options.stopword_files)
+      item.custom.generated_keywords = keywords.reject { |kw| kw.length < 4 }
+    end
+
+    private
+
+    def progress_or_message(message = nil, increment: false, total: 0, finish: false)
+      if @options.verbose
+        puts message if message
+      elsif @progressbar.nil?
+        @progressbar = ProgressBar.create(message:, total:, **::Workflow::Config.progress_defaults)
+      elsif increment
+        @progressbar.increment
+      elsif finish
+        @progressbar.finish
+        @progressbar = nil
       end
     end
   end

@@ -19,3 +19,7 @@ gem 'ruby-progressbar', '~> 1.11'
 gem 'serrano'
 gem 'summarize', '~> 1.0'
 gem 'text', '~> 1.3'
+
+gem "scylla", "~> 1.2"
+
+gem "colorize", "~> 0.8.1"
