@@ -98,14 +98,14 @@ module Format
           cit.append("DOI #{to_di(item)}") if item.doi
         else
           cit.append(item.title)
-          cit.append("ISBN #{item.isbn}") if item.isbn
+          cit.append("ISBN #{item.isbn.first}") unless item.isbn.empty?
         end
         cit.join(', ')
       end
 
       # @param [Format::CSL::Item] item
       def to_ut(item)
-        item.doi || item.isbn.scan(/\d+/)&.first || "#{to_cr_au(item)}_#{to_pd(item)}"
+        item.id
       end
 
       # @param [Format::CSL::Item] item

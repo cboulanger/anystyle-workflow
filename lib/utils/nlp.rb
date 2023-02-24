@@ -63,7 +63,8 @@ module Utils
         File.readlines(file_path).each do |line|
           if line.start_with? '/'
             # interpret as regular expression
-            text.gsub!(/#{line.strip.gsub(%r{^/|/$}, '')}/, '')
+            regex = Regexp.compile(line.strip.gsub(%r{^/|/i?$}, ''), line.end_with?('i') ? Regexp::IGNORECASE : nil )
+            text.gsub!(regex, '')
           else
             text.gsub!(line.strip, '')
           end

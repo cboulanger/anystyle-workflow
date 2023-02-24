@@ -3,25 +3,25 @@
 module Format
   # This module hold information and methods that work with the CSL standard and
   # non-standard vendor extension or those defined by this app
+  # Extensions to the standard schema are prefixed with "x_"
+  # @see https://citeproc-js.readthedocs.io/en/latest/csl-json/markup.html
+  # @see https://github.com/citation-style-language/schema/blob/master/schemas/input/csl-data.json
   module CSL
-
-    CSL_TYPES =[
-      JOURNAL_ARTICLE = "journal-article"
+    CSL_TYPES = [
+      ARTICLE_JOURNAL = 'article-journal'
     ].freeze
 
     class Object
-
       # Initialize an object with values
-      def initialize(data, accesor_map = {})
-        @_accessor_map = accesor_map || {}
-        @_key_map = {}
-        @_accessor_map.each { |k, v| @_key_map[v] = k }
+      def initialize(data, accessor_map: {})
+        @_accessor_map = accessor_map
+        @_key_map = @_accessor_map.invert
         data.each do |k, v|
           method_name = "#{accessor_name(k)}=".to_sym
           if respond_to? method_name
             public_send(method_name, v)
           else
-            STDERR.puts "#{self.class.name}: Ignoring unsupported attribute '#{k}'".colorize(:red)
+            warn "#{self.class.name}: Ignoring unsupported attribute '#{method_name}' (from key '#{k}')".colorize(:red)
           end
         end
       end
@@ -47,9 +47,9 @@ module Format
         hash.compact
       end
 
-      alias_method :to_hash, :to_h
+      alias to_hash to_h
 
-      def to_json opts = nil
+      def to_json(opts = nil)
         JSON.pretty_generate to_hash, opts
       end
 
@@ -70,7 +70,6 @@ module Format
 
     # A CSL-JSON date field such as issued, accessed ...
     class Date < Object
-
       ACCESSOR_MAP = {
         "date_parts": 'date-parts'
       }.freeze
@@ -79,13 +78,25 @@ module Format
       attr_reader :date_parts
 
       def initialize(data)
-        super data, ACCESSOR_MAP
+        super(data, accessor_map: ACCESSOR_MAP)
       end
 
       def date_parts=(date_parts)
-        unless date_parts.is_a?(Array) && date_parts.length.positive? && date_parts.select { |i| !i.is_a? Array }.empty?
-          raise 'Invalid date-parts format'
+        unless date_parts.is_a?(Array) && date_parts.length.positive?
+          raise "Invalid date-parts format: #{date_parts}"
         end
+
+        date_parts.map! do |part|
+          case part
+          when String
+            part.split('-').map {|p| p.to_i}
+          when Array
+            part
+          else
+            raise "Invalid date-part component #{part}"
+          end
+        end
+
         @date_parts = date_parts
       end
 
@@ -98,12 +109,10 @@ module Format
       def to_year
         (@date_parts&.first&.first || @raw&.scan(/\d{4}/)&.first)&.to_i
       end
-
     end
 
     # A name/creator field such as author, editor, translator...
     class Creator < Object
-
       # csl standard
       attr_accessor :family, :given, :literal, :suffix, :dropping_particle, :non_dropping_particle, :sequence, :particle
 
@@ -170,7 +179,6 @@ module Format
       def parse_given(name)
         Namae.parse(name).first&.given
       end
-
     end
 
     # Non-standard! Field names are a mix of OpenAlex and GROBID-TEI
@@ -185,16 +193,13 @@ module Format
     # "country_code": "GB"
     #
     class Affiliation < Object
-
       attr_accessor :literal, :center, :institution, :department, :address, :country,
                     :country_code, :ror, :x_affiliation_api_url, :x_affiliation_id
-
     end
 
     # Custom
     class Custom < Object
-
-      def initialize(data, accesor_map = nil)
+      def initialize(data)
         @validated_by = {}
         super
       end
@@ -203,14 +208,10 @@ module Format
       # @return [Hash<{String => Item}>
       attr_accessor :times_cited, :validated_by, :metadata_source, :metadata_id, :metadata_api_url,
                     :reference_data_source, :cited_by_api_url, :container_id, :generated_keywords
-
     end
 
-    # A CSL-JSON item. Extensions to the standard schema are prefixed with "x_"
-    # @see https://citeproc-js.readthedocs.io/en/latest/csl-json/markup.html
-    # @see https://github.com/citation-style-language/schema/blob/master/schemas/input/csl-data.json
+    # A CSL-JSON item.
     class Item < Object
-
       ACCESSOR_MAP = {
         'doi': 'DOI',
         'isbn': 'ISBN',
@@ -224,7 +225,7 @@ module Format
       # actively supported fields
 
       # mandatory
-      attr_accessor :type, :id, :title
+      attr_accessor :type, :title
 
       # to do : check type
 
@@ -235,12 +236,24 @@ module Format
       # @return [Array<Creator>]
       attr_reader :author, :editor
 
-      def initialize(data)
-        super(data, ACCESSOR_MAP)
+      # @param [Hash] data
+      # @param [Hash] accessor_map
+      def initialize(data, accessor_map: {})
+        @isbn = []
+        @issn = []
+        super(data, accessor_map: ACCESSOR_MAP.merge(accessor_map))
+      end
+
+      # An unique string identifying the item. Returns DOI, ISBN or citation_key if exists, otherwise a 50 character
+      # creator_year_title string value
+      # @!attribute id
+      # @return [String]
+      def id
+        doi || isbn&.first || citation_key || creator_year_title.join('_').gsub(' ', '_')[..50]
       end
 
       def author=(authors)
-        raise 'author data must be an array' unless authors.is_a?(Array)
+        raise "Author data must be an array, got #{authors}" unless authors.is_a?(Array)
 
         @author = authors.map do |creator|
           case creator
@@ -279,7 +292,7 @@ module Format
                     Date.new(date_obj)
                   when String
                     if (m = date_obj.match(/^(\d{4})-(\d\d)-(\d\d)$/))
-                      date_parts = [m[1..3].map { |i| i.to_i }]
+                      date_parts = [m[1..3].map(&:to_i)]
                       Date.new({ "date-parts": date_parts })
                     elsif (m = date_obj.match(/^(\d{4})$/))
                       date_parts = [[m[1].to_i]]
@@ -315,10 +328,11 @@ module Format
       # references
       # @param [Array<Hash|Item>] references
       def x_references=(references)
-        unless references.is_a?(Array) && references.select { |r| !r.is_a?(Item) }.empty?
-          raise 'References must be an array of Item instances'
+        unless references.is_a?(Array)
+          raise 'References must be an array'
         end
-        @x_references = references
+
+        @x_references = references.first.is_a?(Item) ? references : references.map{ | data | Item.new(data) }
       end
 
       # @return [Array<Item>]
@@ -331,12 +345,17 @@ module Format
       # @!attribute keyword
       # @return [Array]
       def keyword
-        return @keyword || []
+        @keyword || []
       end
 
       def keyword=(keywords)
-        raise "Argument must be Array" unless keywords.is_a? Array
+        raise 'Argument must be Array' unless keywords.is_a? Array
+
         @keyword = keywords
+      end
+
+      def first_page=(page)
+        self.page_first = page
       end
 
       attr_accessor :authority, :citation_number, :doi, :isbn, :issn, :url, :abstract, :citation_key,
@@ -386,7 +405,7 @@ module Format
       end
 
       def year
-        issued.to_year
+        issued&.to_year
       end
 
       # Return an array of Creator items which are either the authors or in case of edited collections,

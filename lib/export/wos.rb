@@ -6,11 +6,11 @@ module Export
     #   missing fields
     # @param [String] encoding
     # @param [Boolean] add_ref_source
-    def initialize(outfile = nil, compact: true, encoding: 'utf-8')
+    def initialize(outfile, compact: true, encoding: nil)
       super
-      @outfile = outfile || File.join(Path.export, "export-wos-#{Utils.timestamp}.txt")
+      @outfile = outfile
       @compact = compact
-      @encoding = encoding
+      @encoding = encoding || 'utf-8'
     end
 
     def name

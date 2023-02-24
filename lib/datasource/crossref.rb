@@ -7,13 +7,9 @@ require 'digest'
 module Datasource
   class Crossref < Datasource
 
-    CSL_CUSTOM_FIELDS = [
-      TIMES_CITED = 'crossref-is-referenced-by-count',
-      TIMES_CITED_ORIG = 'is-referenced-by-count',
-      NUMBER_REFERENCES = 'references-count',
-      AUTHOR_AFFILIATIONS = 'crossref-author-affiliations',
-      AUTHORS_AFFILIATIONS = 'crossref-authors-affiliations'
-    ].freeze
+    TYPES_MAP = {
+      'journal-article' => Format::CSL::ARTICLE_JOURNAL
+    }.freeze
 
     class << self
 
@@ -28,7 +24,7 @@ module Datasource
         # }
         # puts "Querying crossref with #{JSON.pretty_generate(args)}" if verbose
         response = Serrano.works(**args)
-        #puts"Response:#{JSON.pretty_generate(response)}" if verbose
+        # puts"Response:#{JSON.pretty_generate(response)}" if verbose
         # response
       end
 
@@ -48,8 +44,26 @@ module Datasource
 
         items = Cache.load(dois)
         if items.nil?
-          puts " - CrossRef: Requesting data for #{dois.join(', ')}" if verbose
-          response = Serrano.content_negotiation(ids: dois, format: 'citeproc-json')
+          retries = 0
+          wait_time = 1
+          response = loop do
+            dois_str = dois.join(', ')
+            begin
+              retries_str = (retries.positive? ? "(#{retries})" : '')
+              puts " - CrossRef: Requesting data for #{dois_str} #{retries_str}" if verbose
+              response = Serrano.content_negotiation(ids: dois, format: 'citeproc-json')
+              sleep 0.5 # avoid hitting the rate limit
+              break response
+            rescue Net::ReadTimeout, Faraday::ConnectionFailed
+              retries += 1
+              raise 'Too many timeouts' if retries > 3
+
+              STDERR.puts " - CrossRef: Connection problem, retrying in #{wait_time} seconds...".colorize(:red)
+              sleep wait_time
+              wait_time *= 2
+            end
+          end
+
           if response.nil?
             puts ' - No result' if verbose
             return []
@@ -78,20 +92,42 @@ module Datasource
 
     class Item < Format::CSL::Item
 
+      ACCESSOR_MAP = {
+        'page_first': 'first-page'
+      }.freeze
+
       # to do map any field that might be usable
       IGNORE_FIELDS = %w[license indexed reference-count content-domain created source
                          is-referenced-by-count references-count prefix member original-title link deposited
-                         score resource subtitle short-title subject relation
+                         score resource subtitle short-title subject relation published-online doi-asserted-by
                          journal-issue alternative-id container-title-short published published-print].freeze
 
-      def initialize(data)
-        self.custom.metadata_source = 'crossref'
+      def initialize(data, accessor_map: {})
+        custom.metadata_source = 'crossref'
         IGNORE_FIELDS.each { |key| data.delete(key) }
-        super data
+        super(data, accessor_map: accessor_map.merge(ACCESSOR_MAP))
       end
 
-      def creator_factory(data)
-        Creator.new(data)
+      def type=(type)
+        type = TYPES_MAP[type] || type
+        super
+      end
+
+      def author=(authors)
+        if authors.is_a? String
+          _author = Creator.new(({literal: authors}))
+          _author.family, _author.given = _author.family_and_given
+          authors = [_author]
+        end
+        super
+      end
+
+      def year=(year)
+        self.issued = year.to_i if self.issued.nil? && year.to_i > 0
+      end
+
+      def article_title=(title)
+        self.title = title
       end
 
       def abstract=(abstract)
@@ -122,16 +158,31 @@ module Datasource
                          'title' => ref['unstructured']
                        }
                      end
+                   else
+                     ref
                    end
             item['DOI'] = ref['DOI'] if ref['DOI']
             Item.new(item)
           else
-            raise "Invalid reference item"
+            raise 'Invalid reference item'
           end
         end
       end
 
-      def published_online=(*); end
+      def key=(key)
+        self.citation_key = key
+      end
+
+      def journal_title=(title)
+        self.container_title = title
+      end
+
+
+      protected
+
+      def creator_factory(data)
+        Creator.new(data)
+      end
 
     end
   end

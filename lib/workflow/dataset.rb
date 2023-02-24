@@ -34,9 +34,11 @@ module Workflow
       :generate_keywords,
       :verbose,
       :use_cache,
+      :cache_file_prefix,
       :policies,
       :authors_ignore_list,
       :affiliation_ignore_list,
+      :abbr_disamb_langs,
       keyword_init: true
     ) do
       def initialize(*)
@@ -47,6 +49,7 @@ module Workflow
         self.policies ||= [ADD_MISSING_ALL, ADD_UNVALIDATED, REMOVE_DUPLICATES, ADD_AFFILIATIONS]
         self.authors_ignore_list ||= []
         self.affiliation_ignore_list ||= []
+        self.abbr_disamb_langs ||= ['eng', 'ger']
         raise "Invalid text_dir #{text_dir}" unless text_dir.nil? || Dir.exist?(text_dir)
         return unless stopword_files.is_a?(Array) &&
           (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
@@ -58,20 +61,49 @@ module Workflow
     # Creates a dataset of Format::CSL::Item objects which can be exported to
     # target formats
     #
-    # @param [Array<String>] ids Array of ids that identify the references, such as a DOI, which can be used to call #merge_and_validate
+    # @param [Array<Format::CSL::Items>] items
     # @param [Workflow::Dataset::Options] options
-    def initialize(ids, options: {})
-      @options = options || Workflow::Dataset::Options.new
-      @ids = ids
-      @iso4 = PyCall.import_module('iso4')
+    def initialize(items = [], options: Workflow::Dataset::Options.new)
+      raise 'Argument must be array of Format::CSL::Items' \
+          unless items.is_a?(Array) && items.reject { |i| i.is_a? Format::CSL::Item }.empty?
+
+      raise 'Options must be Workflow::Dataset::Options object' \
+          unless options.is_a? Workflow::Dataset::Options
+
+      @options = options
       @journal_abbreviations = {}
+      @items = items || []
     end
 
-    # @param [Integer] limit Limits the number of generated items (for test purposes)
-    def generate(limit: nil)
-      # use cache if it exists to speed up process,
-      items_cache = (@options.use_cache && Cache.load(@ids, prefix: 'dataset-')) || {}
-      items = []
+    # @!attribute [r] length
+    # @return [Integer]
+    def length
+      @items.length
+    end
+
+    # @param [Array<Format::CSL::Item>] items An array of Format::CSL::Item objects
+    def add(items)
+      raise 'Argument must be an non-empty array of Format::CSL::Items or of string ids' \
+          unless items.is_a?(Array) && items.first.is_a?(Format::CSL::Item)
+
+      items.each do |item|
+        @items.append(item)
+      end
+    end
+
+    # @param [Array<String>] ids An array of ids that identify the references, such as a DOI, which can be used 
+    #   to call #merge_and_validate
+    # @param [Integer] limit Limits the number of generated items (mainly for test purposes)
+    def import(ids, datasources: nil, limit: nil)
+      raise 'Argument must be an non-empty array of string ids' \
+        unless ids.is_a?(Array) && ids.first.is_a?(String)
+
+      @ids = ids
+      @datasources = datasources || %w[crossref openalex grobid dimensions wos]
+
+      # use cache if it exists to speed up process
+      items_cache = (@options.use_cache && Cache.load(@ids, prefix: @options.cache_file_prefix)) || {}
+      # @type [Array<Format::CSL::Item>]
       num_refs = 0
       counter = 0
       total = [@ids.length, limit || @ids.length].min
@@ -86,10 +118,12 @@ module Workflow
         if @options.use_cache && (item_data = items_cache[id])
           # use the cached item if exists
           item = Format::CSL::Item.new(item_data)
+          @items.append(item)
           progress_or_message ' - Using cached data'
+          next
         else
           # get the item merged from the different datasources
-          item = merge_and_validate(id)
+          item = merge_and_validate(id, @datasources)
         end
 
         # ignore items without any authors (such as book report sections)
@@ -110,7 +144,7 @@ module Workflow
         progress_or_message " - Found #{n} references"
 
         # journal abbreviation
-        if item.type == Format::CSL::JOURNAL_ARTICLE && item.journal_abbreviation.nil?
+        if item.type == Format::CSL::ARTICLE_JOURNAL && item.journal_abbreviation.to_s.empty?
           add_journal_abbreviation(item)
         end
 
@@ -120,18 +154,16 @@ module Workflow
           add_reference_keywords(item)
         end
 
-        items.append(item)
+        @items.append(item)
         items_cache[id] = item.to_h
         counter += 1
+        # save cache every 10 items
+        Cache.save(@ids, items_cache, prefix: @options.cache_file_prefix) if (counter % 10).zero?
+        # respect limit
         break if limit && counter >= limit
       end
-
       progress_or_message finish: true
-
-      Cache.save('_export', items_cache, use_literal: true)
-
-      # @type [Array<Format::CSL::Item>]
-      @items = items
+      @items
     end
 
     # Export the dataset using the given exporter class
@@ -151,7 +183,27 @@ module Workflow
         exporter.add_item item
         break if counter >= total
       end
+      exporter.finish
       progress_or_message finish: true
+    end
+
+    # @param [String] dataset_name
+    # @return [Workflow::Dataset]
+    def self.load(dataset_name, options: nil)
+      _dataset_path = dataset_path(dataset_name)
+      raise "Dataset '#{dataset_name}' does not exist." unless File.exist? _dataset_path
+
+      # @type [Array<Format::CSL::Item]
+      items = Marshal.load(File.binread(_dataset_path))
+      new(items, options:)
+    end
+
+    def self.dataset_path(dataset_name)
+      File.join(Workflow::Path.tmp, "#{dataset_name}.dataset")
+    end
+
+    def save(dataset_name)
+      File.binwrite(Dataset.dataset_path(dataset_name), Marshal.dump(@items))
     end
 
     protected
@@ -159,7 +211,8 @@ module Workflow
     # Given an identifier, merge available data. Anystyle references will be validated against the vendor references.
     # @param [String] item_id
     # @return [Format::CSL::Item]
-    def merge_and_validate(item_id)
+    # @param [Array<String>] datasources
+    def merge_and_validate(item_id, datasources)
       Datasource::Anystyle.verbose = @options.verbose
       Datasource::Crossref.verbose = @options.verbose
 
@@ -183,7 +236,7 @@ module Workflow
       num_anystyle_unvalidated_refs = 0
 
       # lookup with crossref metadata by doi
-      vendors = %w[crossref openalex grobid dimensions wos]
+      vendors = datasources
       vendors.each do |vendor|
         # @type [Format::CSL::Item]
         vendor_item = ::Datasource.get_provider_by_name(vendor).import_items([doi]).first
@@ -225,7 +278,7 @@ module Workflow
               add_affiliations(ref, vendor_ref, vendor)
 
               # journal abbreviation
-              if ref.type == Format::CSL::JOURNAL_ARTICLE && ref.journal_abbreviation.nil?
+              if ref.type == Format::CSL::ARTICLE_JOURNAL && ref.journal_abbreviation.to_s.empty?
                 add_journal_abbreviation(ref)
               end
 
@@ -310,11 +363,11 @@ module Workflow
 
           raw_affiliation = vendor_creator.x_raw_affiliation_string
           # ignore specific affiliations or false positives
-          next if raw_affiliation && @options.affiliation_ignore_list.any? do |expr|
+          next if @options.affiliation_ignore_list.any? do |expr|
             if expr.is_a?(Regexp)
-              raw_affiliation&.match(expr) || vendor_creator.x_affiliations&.any? { |a| a.literal.match(expr) }
+              raw_affiliation&.match(expr) || vendor_creator.x_affiliations&.any? { |a| a.literal&.match(expr) }
             else
-              raw_affiliation&.include?(expr) || vendor_creator.x_affiliations&.any? { |a| a.literal.include(expr) }
+              raw_affiliation&.include?(expr) || vendor_creator.x_affiliations&.any? { |a| a.literal&.include?(expr) }
             end
           end
 
@@ -334,19 +387,30 @@ module Workflow
 
     # @param [Format::CSL::Item] item
     def add_journal_abbreviation(item)
+      @iso4 = PyCall.import_module('iso4') if @iso4.nil?
       journal_name = item.container_title
-      abbr = @journal_abbreviations[journal_name]
-      return abbr unless abbr.nil?
-
-      item.journal_abbreviation = @journal_abbreviations[journal_name] = @iso4.abbreviate(journal_name)
+      disambiguation_langs = @options.abbr_disamb_langs
+      item.journal_abbreviation = @journal_abbreviations[journal_name] ||
+        (@journal_abbreviations[journal_name] = @iso4.abbreviate(journal_name, disambiguation_langs:))
     end
 
     # This auto-generates an abstract and keywords and also adds a language if none has been set
     # @param [Format::CSL::Item] item
     # @param [String] text
     def add_metadata_from_text(item, text)
-      abstract, keywords, language = summarize(text, ratio: 5, topics: true, stopword_files: @options.stopword_files)
-      item.abstract = abstract if item.abstract.nil? || item.abstract.empty?
+      if text.to_s.strip.empty?
+        STDERR.puts "Cannot add metadata from empty text for document with id '#{item.id}'.".colorize(:red)
+        return
+
+      end
+      begin
+        abstract, keywords, language = summarize(text, ratio: 5, topics: true, stopword_files: @options.stopword_files)
+      rescue StandardError => e
+        STDERR.puts "Problem summarizing document with id '#{item.id}': #{e.to_s}".colorize(:red)
+        return
+
+      end
+      item.abstract = abstract if item.abstract.to_s.empty?
       item.keyword = keywords if @options.generate_keywords && item.keyword.empty?
       item.language ||= language if language
     end
@@ -354,7 +418,14 @@ module Workflow
     # @param [Format::CSL:Item] item
     def add_reference_keywords(item)
       reference_corpus = item.x_references.map { |ref| [ref.title, ref.abstract].compact.join(' ') }.join(' ')
-      _, keywords = summarize(reference_corpus, topics: true, stopword_files: @options.stopword_files)
+      return if reference_corpus.to_s.strip.empty?
+
+      begin
+        _, keywords = summarize(reference_corpus, topics: true, stopword_files: @options.stopword_files)
+      rescue StandardError => e
+        STDERR.puts "Problem summarizing references of document with id '#{item.id}': #{e.to_s}\n#{reference_corpus}".colorize(:red)
+        return
+      end
       item.custom.generated_keywords = keywords.reject { |kw| kw.length < 4 }
     end
 

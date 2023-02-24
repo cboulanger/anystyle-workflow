@@ -27,8 +27,8 @@ module Datasource
     class Item < Format::CSL::Item
       def initialize(data)
         super(fix_legacy_data(data))
-        custom.metadata_source = "wos"
-        custom.reference_data_source = "wos"
+        custom.metadata_source = 'wos'
+        custom.reference_data_source = 'wos'
       end
 
       def reference=(refs)

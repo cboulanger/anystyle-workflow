@@ -25,7 +25,7 @@ module Datasource
         data.delete('signal')
         data.delete('backref')
         data.delete('ignore')
-        super data
+        super
       end
 
       def legal_ref=(ref)

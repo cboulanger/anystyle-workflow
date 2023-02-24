@@ -22,11 +22,6 @@ def test1
   end
 end
 
-def test2
-  doi = '10.1111/1467-6478.00033'
-  items = Workflow::Dataset.merge_and_validate(doi)
-  File.write('tmp/test2.json', JSON.pretty_generate(items.to_h))
-end
 
 def test3
   ids = Dir.glob(File.join(Workflow::Path.csl, '*.json')).map { |f| File.basename(f, '.json') }
@@ -39,11 +34,12 @@ def test3
     text_dir:,
     stopword_files:,
     authors_ignore_list:,
-    affiliation_ignore_list:
+    affiliation_ignore_list:,
+    cache_file_prefix: 'test-'
   )
-  limit = 10
-  dataset = Workflow::Dataset.new(ids[..limit], options:)
-  items = dataset.generate(limit:)
+  limit = 1000
+  dataset = Workflow::Dataset.new(options:)
+  items = dataset.import(ids[..limit], limit:)
   File.write('tmp/test3.json', JSON.pretty_generate(items.map(&:to_h)))
   dataset.export(Export::WebOfScience.new('tmp/test3.txt'))
 end

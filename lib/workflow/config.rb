@@ -4,10 +4,6 @@ module Workflow
   class Config
     class << self
 
-      def datasources
-        %w[crossref dimensions openalex]
-      end
-
       def progress_defaults
         {
           format: "%t %b\u{15E7}%i %p%% %c/%C %a %e",
