@@ -32,7 +32,7 @@ module Datasource
       attr_accessor :verbose
 
       def raise_api_error(url, response)
-        #raise "#{url} returned 404 page not found" if response.status == 404
+        # raise "#{url} returned 404 page not found" if response.status == 404
         if response.error
           error = 'Connection error'
           message = response.error.to_s
@@ -243,13 +243,9 @@ module Datasource
         end
 
         # Ignored properties
-        def display_name=(_)
-          ;
-        end
+        def display_name=(_) end
 
-        def publication_year=(_)
-          ;
-        end
+        def publication_year=(_) end
 
         private
 

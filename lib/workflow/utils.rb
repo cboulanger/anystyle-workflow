@@ -3,9 +3,32 @@
 module Workflow
   class Utils
     class << self
+      def datasource_ids
+        %w[crossref openalex grobid dimensions wos]
+      end
+
+      # Given a journal or book title, abbreviate it according to ISO4 rules. Titles are limited to 8 words.
+      # @param [Format::CSL::Item] title
+      def abbrev_iso4(title, disambiguation_langs: [])
+        return '' if title.nil?
+
+        if @ios4_cache.nil?
+          @ios4_cache = Cache.new('iso4_title_abbreviations', use_literal: true)
+          @ios4_cache_data = @ios4_cache.load || {}
+        end
+        if @ios4_cache_data.key? title
+          @ios4_cache_data[title]
+        else
+          @iso4 = PyCall.import_module('iso4') if @iso4.nil?
+          abbr_title = @iso4.abbreviate(title, disambiguation_langs:).split(' ')[..8].join(' ')
+          @ios4_cache_data[title] = abbr_title
+          @ios4_cache.save(@ios4_cache_data)
+          abbr_title
+        end
+      end
 
       def debug_message(str)
-        caller_locations(1, 1).first.tap{|loc| puts "#{loc.path}:#{loc.lineno}:#{str}"}
+        caller_locations(1, 1).first.tap { |loc| puts "DEBUG #{loc.path}:#{loc.lineno}:#{str}" }
       end
 
       def remove_whilespace_from_lines(file_path)

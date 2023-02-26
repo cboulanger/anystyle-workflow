@@ -29,11 +29,16 @@ module Datasource
         super(fix_legacy_data(data))
         custom.metadata_source = 'wos'
         custom.reference_data_source = 'wos'
+        if container_title && title.nil?
+          self.title = container_title
+        end
+        self.type ||= Item.guess_type(self)
       end
 
       def reference=(refs)
         self.x_references = refs.map { |r| Item.new(r.compact) }
       end
+
 
       private
 
@@ -65,7 +70,9 @@ module Datasource
           author.delete('email')
           if affiliations&.length&.positive?
             aff = affiliations.shift
-            author['x_affiliations'] = [{ 'institution': aff['organization'], 'country': aff['country'] }]
+            institution = aff['organization']
+            institution = institution.first if institution.is_a? Array
+            author['x_affiliations'] = [{ 'institution': institution, 'country': aff['country'] }]
           end
           author.compact
         end

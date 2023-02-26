@@ -84,9 +84,15 @@ module Datasource
       end
     end
 
+    class Affiliation < Format::CSL::Affiliation
+      def name=(name)
+        self.literal = name
+      end
+    end
+
     class Creator < Format::CSL::Creator
       def affiliation=(affiliation)
-        self.x_affiliations = affiliation.map { |a| Format::CSL::Affiliation.new({ 'literal': a }) }
+        self.x_affiliations = affiliation.map { |a| Affiliation.new({ 'literal': a }) }
       end
     end
 
@@ -97,7 +103,7 @@ module Datasource
       }.freeze
 
       # to do map any field that might be usable
-      IGNORE_FIELDS = %w[license indexed reference-count content-domain created source
+      IGNORE_FIELDS = %w[license indexed reference-count content-domain created source funder article-number notes
                          is-referenced-by-count references-count prefix member original-title link deposited
                          score resource subtitle short-title subject relation published-online doi-asserted-by
                          journal-issue alternative-id container-title-short published published-print].freeze

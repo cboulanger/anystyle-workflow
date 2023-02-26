@@ -1,20 +1,8 @@
 module Export
   class WebOfScience < Exporter
 
-    # @param [String] outfile path to output file
-    # @param [Boolean] compact If true, remove all empty tags. Default is true, pass false if an app complains about
-    #   missing fields
-    # @param [String] encoding
-    # @param [Boolean] add_ref_source
-    def initialize(outfile, compact: true, encoding: nil)
-      super
-      @outfile = outfile
-      @compact = compact
-      @encoding = encoding || 'utf-8'
-    end
-
     def name
-      "Web of Science/ISI format exporter"
+      'Web of Science/ISI format exporter'
     end
 
     def start

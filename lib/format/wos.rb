@@ -1,9 +1,5 @@
 # frozen_string_literal: true
 
-# require 'damerau-levenshtein'
-# require 'text/levenshtein'
-require 'matrix'
-
 module Format
   # class to create a file compatible to the WOS plain text export format
   # from an array of CSL-JSON data
@@ -51,14 +47,10 @@ module Format
       # @param [Format::CSL::Item] item
       def to_dt(item)
         case item.type
-        when 'journal-article'
+        when Format::CSL::ARTICLE_JOURNAL
           'Article'
-        when 'book'
-          'Book'
-        when 'chapter'
-          'Chapter'
         else
-          'Unknown'
+          item.type
         end
       end
 
@@ -91,14 +83,21 @@ module Format
         cit = []
         cit.append(to_cr_au(item))
         cit.append(to_py(item))
-        if item.container_title
+        case item.type
+        when Format::CSL::ARTICLE_JOURNAL, Format::CSL::REPORT
           cit.append(to_ji(item))
           cit.append("V#{item.volume}") if item.volume
-          cit.append("P#{item.page.scan(/\d+/).first}") if item.page
+          cit.append("P#{item.page_first}") if item.page_first
           cit.append("DOI #{to_di(item)}") if item.doi
-        else
-          cit.append(item.title)
+        when Format::CSL::CHAPTER
+          cit.append(to_ji(item))
+          cit.append("P#{item.page_first}") if item.page_first
+          cit.append("DOI #{to_di(item)}") if item.doi
+        when Format::CSL::BOOK, Format::CSL::COLLECTION
+          cit.append(to_iso4_title(item))
           cit.append("ISBN #{item.isbn.first}") unless item.isbn.empty?
+        else
+          cit.append(to_iso4_title(item))
         end
         cit.join(', ')
       end
@@ -189,13 +188,18 @@ module Format
       # J9 29-Character Source Abbreviation
       # @param [Format::CSL::Item] item
       def to_j9(item)
-        item.journal_abbreviation
+        item.journal_abbreviation || to_ji(item)
       end
 
-      # JI 	ISO Source Abbreviation
+      # JI ISO Source Abbreviation
       # @param [Format::CSL::Item] item
       def to_ji(item)
-        item.journal_abbreviation&.gsub('.', '')
+        (item.journal_abbreviation || item.custom&.iso4_container_title || item.container_title)&.gsub('.', '')
+      end
+
+      # @param [Format::CSL::Item] item
+      def to_iso4_title(item)
+        (item.custom&.iso4_title || item.title)&.gsub('.', '')
       end
 
       # Convert a Format::CSL::Item to a WOS/RIS text record

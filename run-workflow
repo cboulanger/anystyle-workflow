@@ -80,6 +80,7 @@ HELP = \
          
      General parameters:
          --verbose                           Output additional information
+         --debug                             Output debug information
          --clean                             Clean output directories before running command
 
   TEXT
@@ -147,7 +148,7 @@ if ARGV.include? 'extract'
 end
 
 if ARGV.include? 'stats'
-  Workflow::Extraction.write_statistics(
+  Workflow::Statistics.compile(
     verbose: ARGV.include?('--verbose'),
     type: ARGV.include?('--affiliations') ? "affiliation" : "reference"
   )
@@ -232,13 +233,13 @@ if ARGV.include? 'generate-dataset'
   datasources = ARGV[(ARGV.index(arg_name) + 1)].split(",") if ARGV.include? arg_name
 
   arg_name = '--stopword-file'
-  stopword_files = ARGV.select.with_index { |arg, i| arg[i - 1] == arg_name }
+  stopword_files = ARGV.select.with_index { |_, i| ARGV[i - 1] == arg_name }
 
   arg_name = '--ignore-author'
-  authors_ignore_list = ARGV.select.with_index { |arg, i| arg[i - 1] == arg_name }
+  authors_ignore_list = ARGV.select.with_index { |_, i| ARGV[i - 1] == arg_name }
 
   arg_name = '--ignore-affiliation'
-  affiliation_ignore_list = ARGV.select.with_index { |arg, i| arg[i - 1] == arg_name }
+  affiliation_ignore_list = ARGV.select.with_index { |_, i| ARGV[i - 1] == arg_name }
 
   arg_name = '--limit'
   limit = ARGV[(ARGV.index(arg_name) + 1)].to_i if ARGV.include? arg_name
@@ -246,9 +247,8 @@ if ARGV.include? 'generate-dataset'
   arg_name = '--cache-prefix'
   cache_file_prefix = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
 
-  verbose = ARGV.include?('--verbose')
   options = Workflow::Dataset::Options.new(
-    verbose:,
+    verbose: ARGV.include?('--verbose'),
     use_cache: !ARGV.include?('--no-cache'),
     text_dir:,
     stopword_files:,
@@ -256,6 +256,9 @@ if ARGV.include? 'generate-dataset'
     affiliation_ignore_list:,
     cache_file_prefix:
   )
+  if ARGV.include? '--debug'
+    puts options
+  end
   ids = Dir.glob(File.join(input_dir, '*.json')).map { |f| File.basename(f, '.json') }
   dataset = Workflow::Dataset.new(options:)
   dataset.import(ids[..limit], limit:, datasources:)
@@ -283,6 +286,7 @@ if ARGV.include? 'export-dataset'
 
   arg_name = '--encoding'
   encoding = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
+  encoding ||= 'utf-8'
 
   arg_name = '--limit'
   limit = ARGV[(ARGV.index(arg_name) + 1)].to_i if ARGV.include? arg_name
@@ -296,10 +300,10 @@ if ARGV.include? 'export-dataset'
 
   exporter = case format
              when 'wos'
-               out_path ||= File.join(Path.export, "export-wos-#{Workflow::Utils.timestamp}.txt")
+               out_path ||= File.join(Workflow::Path.export, "export-wos-#{Workflow::Utils.timestamp}.txt")
                Export::WebOfScience.new(out_path, compact: !ARGV.include?('--no-compact'), encoding:)
              when 'csl'
-               out_path ||= File.join(Path.export, "export-csl-#{Workflow::Utils.timestamp}.json")
+               out_path ||= File.join(Workflow::Path.export, "export-csl-#{Workflow::Utils.timestamp}.json")
                Export::CSL_JSON.new(out_path, compact: !ARGV.include?('--no-compact'), encoding:)
              else
                puts "Invalid format '#{format}'".colorize(:red)

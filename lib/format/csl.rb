@@ -8,7 +8,51 @@ module Format
   # @see https://github.com/citation-style-language/schema/blob/master/schemas/input/csl-data.json
   module CSL
     CSL_TYPES = [
-      ARTICLE_JOURNAL = 'article-journal'
+      'article',
+      ARTICLE_JOURNAL = 'article-journal',
+      'article-magazine',
+      'article-newspaper',
+      'bill',
+      BOOK = 'book',
+      'broadcast',
+      CHAPTER = 'chapter',
+      'classic',
+      COLLECTION = 'collection',
+      'dataset',
+      'document',
+      'entry',
+      'entry-dictionary',
+      'entry-encyclopedia',
+      'event',
+      'figure',
+      'graphic',
+      'hearing',
+      'interview',
+      LEGAL_CASE = 'legal_case',
+      LEGISLATION = 'legislation',
+      'manuscript',
+      'map',
+      'motion_picture',
+      'musical_score',
+      'pamphlet',
+      PAPER_CONFERENCE = 'paper-conference',
+      'patent',
+      'performance',
+      'periodical',
+      'personal_communication',
+      'post',
+      'post-weblog',
+      'regulation',
+      REPORT = 'report',
+      'review',
+      'review-book',
+      'software',
+      'song',
+      'speech',
+      'standard',
+      THESIS = 'thesis',
+      'treaty',
+      'webpage'
     ].freeze
 
     class Object
@@ -26,7 +70,7 @@ module Format
         end
       end
 
-      def to_h
+      def to_h(compact: false)
         hash = {}
         instance_variables.each do |var|
           attr_name = var.to_s.delete('@')
@@ -34,17 +78,27 @@ module Format
 
           key = key_name(attr_name)
           value = instance_variable_get(var)
-
           hash[key] = case value
                       when Array
-                        value = value.map { |i| i.is_a?(CSL::Object) ? i.to_hash : i }
+                        value.map { |i| i.is_a?(CSL::Object) ? i.to_h(compact:) : i }
                       when CSL::Object
-                        value.to_h
+                        value.to_h(compact:)
                       else
                         value
                       end
         end
-        hash.compact
+        return hash unless compact
+
+        hash.delete_if do |_k, v|
+          case v
+          when Array
+            v.empty?
+          when String
+            v.strip.empty?
+          else
+            v.nil?
+          end
+        end
       end
 
       alias to_hash to_h
@@ -82,14 +136,12 @@ module Format
       end
 
       def date_parts=(date_parts)
-        unless date_parts.is_a?(Array) && date_parts.length.positive?
-          raise "Invalid date-parts format: #{date_parts}"
-        end
+        raise "Invalid date-parts format: #{date_parts}" unless date_parts.is_a?(Array) && date_parts.length.positive?
 
         date_parts.map! do |part|
           case part
           when String
-            part.split('-').map {|p| p.to_i}
+            part.split('-').map(&:to_i)
           when Array
             part
           else
@@ -193,8 +245,21 @@ module Format
     # "country_code": "GB"
     #
     class Affiliation < Object
-      attr_accessor :literal, :center, :institution, :department, :address, :country,
+      attr_accessor :center, :institution, :department, :address, :country,
                     :country_code, :ror, :x_affiliation_api_url, :x_affiliation_id
+
+      attr_reader :literal
+
+      def literal=(literal)
+        @literal = case literal
+                   when Array
+                     literal.join(', ')
+                   when Hash
+                     literal.values.join(', ')
+                   else
+                     literal
+                   end
+      end
     end
 
     # Custom
@@ -208,6 +273,16 @@ module Format
       # @return [Hash<{String => Item}>
       attr_accessor :times_cited, :validated_by, :metadata_source, :metadata_id, :metadata_api_url,
                     :reference_data_source, :cited_by_api_url, :container_id, :generated_keywords
+
+      # Contains a precalculated iso4-abbreviated title that can be used to compare records
+      # @!attribute
+      # @return [String]
+      attr_accessor :iso4_title
+
+      # Contains a precalculated iso4-abbreviated container-title that can be used to compare records
+      # @!attribute
+      # @return [String]
+      attr_accessor :iso4_container_title
     end
 
     # A CSL-JSON item.
@@ -219,7 +294,8 @@ module Format
         'url': 'URL',
         'citation_key': 'citation-key',
         'journal_abbreviation': 'journalAbbreviation',
-        'publisher_place': 'publisher-place'
+        'publisher_place': 'publisher-place',
+        'short_title': 'shortTitle'
       }.freeze
 
       # actively supported fields
@@ -328,11 +404,9 @@ module Format
       # references
       # @param [Array<Hash|Item>] references
       def x_references=(references)
-        unless references.is_a?(Array)
-          raise 'References must be an array'
-        end
+        raise 'References must be an array' unless references.is_a?(Array)
 
-        @x_references = references.first.is_a?(Item) ? references : references.map{ | data | Item.new(data) }
+        @x_references = references.first.is_a?(Item) ? references : references.map { |data| Item.new(data) }
       end
 
       # @return [Array<Item>]
@@ -358,9 +432,15 @@ module Format
         self.page_first = page
       end
 
+      def page_first
+        @page_first || page.to_s.scan(/\d+/).first
+      end
+
       attr_accessor :authority, :citation_number, :doi, :isbn, :issn, :url, :abstract, :citation_key,
                     :edition, :issue, :journal_abbreviation, :language, :locator, :note,
                     :page, :publisher, :publisher_place, :references, :volume
+
+      attr_writer :page_first
 
       # currently not actively supported, although data can be stored
 
@@ -379,7 +459,7 @@ module Format
                     :collection_title, :container_title, :container_title_short, :dimensions, :division,
                     :event, :event_place, :event_title, :first_reference_note_number, :genre, :jurisdiction,
                     :medium, :number, :number_of_pages, :number_of_volumes, :original_publisher,
-                    :original_publisher_place, :original_title, :page_first, :part, :part_title, :printing,
+                    :original_publisher_place, :original_title, :part, :part_title, :printing,
                     :reviewed_genre, :reviewed_title, :scale, :section, :short_title, :source, :status, :supplement,
                     :title_short, :version, :volume_title, :volume_title_short, :year_suffix
 
@@ -431,6 +511,21 @@ module Format
           [first_creator&.downcase, year, title&.downcase]
         else
           [first_creator, year, title]
+        end
+      end
+
+      # @param [Item] item
+      # @return [String]
+      def self.guess_type(item)
+        if item.container_title && item.editor.to_a.empty?
+          # how to differentiate from REPORT?
+          ARTICLE_JOURNAL
+        elsif !item.author.to_a.empty? && !item.editor.to_a.empty? && item.container_title
+          CHAPTER
+        elsif !item.editor.to_a.empty?
+          COLLECTION
+        else
+          BOOK
         end
       end
 

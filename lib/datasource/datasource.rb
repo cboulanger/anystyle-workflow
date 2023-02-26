@@ -5,7 +5,7 @@ module Datasource
 
   # @return [Datasource]
   # @param [String] datasource
-  def get_provider_by_name(datasource)
+  def by_id(datasource)
     case datasource
     when 'crossref'
       Crossref
@@ -47,7 +47,7 @@ module Datasource
       def import_by_identifier(id, datasources: [], verbose:)
         all_items = []
         datasources.map do |ds|
-          resolver = get_provider_by_name(ds)
+          resolver = by_id(ds)
           if id =~ /^10./ && resolver.respond_to?(:import_items)
             resolver.verbose = verbose
             doi = id.sub('_','/')

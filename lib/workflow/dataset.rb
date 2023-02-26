@@ -99,7 +99,7 @@ module Workflow
         unless ids.is_a?(Array) && ids.first.is_a?(String)
 
       @ids = ids
-      @datasources = datasources || %w[crossref openalex grobid dimensions wos]
+      @datasources = datasources || Workflow::Utils.datasource_ids
 
       # use cache if it exists to speed up process
       items_cache = (@options.use_cache && Cache.load(@ids, prefix: @options.cache_file_prefix)) || {}
@@ -143,9 +143,11 @@ module Workflow
         num_refs += n
         progress_or_message " - Found #{n} references"
 
-        # journal abbreviation
-        if item.type == Format::CSL::ARTICLE_JOURNAL && item.journal_abbreviation.to_s.empty?
-          add_journal_abbreviation(item)
+        # iso4 abbreviations
+        if item.type == Format::CSL::ARTICLE_JOURNAL
+          add_journal_abbreviation(item) if item.journal_abbreviation.to_s.empty?
+        else
+          add_title_abbreviations(item)
         end
 
         # keywords generated from references
@@ -239,7 +241,7 @@ module Workflow
       vendors = datasources
       vendors.each do |vendor|
         # @type [Format::CSL::Item]
-        vendor_item = ::Datasource.get_provider_by_name(vendor).import_items([doi]).first
+        vendor_item = ::Datasource.by_id(vendor).import_items([doi]).first
 
         if vendor_item.nil?
           puts " - #{vendor}: No data available".colorize(:red) if @options.verbose
@@ -267,8 +269,19 @@ module Workflow
 
             matched = false
             item.x_references.each do |ref|
-              author, year = ref.creator_year_title(downcase: true)
+
+              # add missing type
+              ref.type ||= vendor_ref.type || Format::CSL.guess_type(ref)
+
+              # iso4 abbreviations
+              if ref.type == Format::CSL::ARTICLE_JOURNAL
+                add_journal_abbreviation(ref) if ref.journal_abbreviation.to_s.empty?
+              else
+                add_title_abbreviations(ref)
+              end
+
               # validation is done by author / year exact match. this will produce some false positives/negatives
+              author, year = ref.creator_year_title(downcase: true)
               next unless author == vendor_author && year == vendor_year
 
               # validate
@@ -276,11 +289,6 @@ module Workflow
 
               # add affiliations
               add_affiliations(ref, vendor_ref, vendor)
-
-              # journal abbreviation
-              if ref.type == Format::CSL::ARTICLE_JOURNAL && ref.journal_abbreviation.to_s.empty?
-                add_journal_abbreviation(ref)
-              end
 
               # add only if reference hasn't been validated already
               unless ref.custom.validated_by.keys.count > 1
@@ -294,6 +302,16 @@ module Workflow
             next if matched
 
             next unless policies.include?(ADD_MISSING_ALL) || (policies.include?(ADD_MISSING_FREE) && vendor != 'wos')
+
+            # add missing type
+            vendor_ref.type ||= Format::CSL::Item.guess_type(vendor_ref)
+
+            # iso4 abbreviations
+            if vendor_ref.type == Format::CSL::ARTICLE_JOURNAL
+              add_journal_abbreviation(vendor_ref) if vendor_ref.journal_abbreviation.to_s.empty?
+            else
+              add_title_abbreviations(vendor_ref)
+            end
 
             validated_references.append(vendor_ref)
             puts " - #{vendor}: Added #{vendor_author} (#{vendor_year}) " if @options.verbose
@@ -362,36 +380,46 @@ module Workflow
           next if creator.family != vendor_creator.family
 
           raw_affiliation = vendor_creator.x_raw_affiliation_string
+          next if raw_affiliation.to_s.empty? && vendor_creator.x_affiliations&.empty?
+
           # ignore specific affiliations or false positives
+
           next if @options.affiliation_ignore_list.any? do |expr|
-            if expr.is_a?(Regexp)
-              raw_affiliation&.match(expr) || vendor_creator.x_affiliations&.any? { |a| a.literal&.match(expr) }
-            else
-              raw_affiliation&.include?(expr) || vendor_creator.x_affiliations&.any? { |a| a.literal&.include?(expr) }
+            affiliations_data = vendor_creator.x_affiliations&.reduce([]) do |data, aff|
+              aff.to_h(compact: true).each_value { |v| data.append v.to_s }
+              data
             end
+            raw_affiliation&.match(expr) || affiliations_data&.any? { |i| i.match(expr) }
           end
 
           creator.x_raw_affiliation_string ||= raw_affiliation
-          aff = creator.x_affiliations&.first&.to_h&.compact
-          vendor_aff = vendor_creator.x_affiliations&.first&.to_h&.compact
+          aff = creator.x_affiliations&.first&.to_h(compact: true)
+          vendor_aff = vendor_creator.x_affiliations&.first&.to_h(compact: true)
           next if vendor_aff.nil?
 
           next unless aff.nil? || vendor_aff.keys.length > aff.keys.length
 
           # assume the better affiliation data is the one with more keys
           creator.x_affiliations = [Format::CSL::Affiliation.new(vendor_aff)]
-          puts " - #{vendor}: Added affiliation data" if @options.verbose
+          puts " - #{vendor}: Added affiliation data #{JSON.dump(vendor_aff)}" if @options.verbose
         end
       end
     end
 
     # @param [Format::CSL::Item] item
     def add_journal_abbreviation(item)
-      @iso4 = PyCall.import_module('iso4') if @iso4.nil?
       journal_name = item.container_title
       disambiguation_langs = @options.abbr_disamb_langs
-      item.journal_abbreviation = @journal_abbreviations[journal_name] ||
-        (@journal_abbreviations[journal_name] = @iso4.abbreviate(journal_name, disambiguation_langs:))
+      item.journal_abbreviation ||= Workflow::Utils.abbrev_iso4(journal_name, disambiguation_langs:)
+    end
+
+    # @param [Format::CSL::Item] item
+    def add_title_abbreviations(item)
+      disambiguation_langs = @options.abbr_disamb_langs
+      item.custom.iso4_title ||= Workflow::Utils.abbrev_iso4(item.title, disambiguation_langs:)
+      return if item.container_title.nil?
+
+      item.custom.iso4_container_title ||= Workflow::Utils.abbrev_iso4(item.container_title, disambiguation_langs:)
     end
 
     # This auto-generates an abstract and keywords and also adds a language if none has been set

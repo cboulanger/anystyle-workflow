@@ -5,7 +5,7 @@ require './lib/bootstrap'
 def test1
   datasources = %w[wos]
   datasources.each do |ds|
-    provider = ::Datasource.get_provider_by_name(ds)
+    provider = ::Datasource.by_id(ds)
     provider.verbose = true
     item = provider.import_items(['10.1111/1467-6478.00033']).first
     r = {}
