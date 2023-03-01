@@ -11,12 +11,11 @@ module Datasource
     class << self
 
       # @return [Array<Item>]
-      def import_items(dois, include_references: false, include_abstract: false)
-        dois.map do |doi|
-          file_name = doi.sub('/', '_')
-          file_path = File.join(Workflow::Path.grobid_tei, "#{file_name}.tei.xml")
+      def import_items(item_ids, include_references: false, include_abstract: false)
+        item_ids.map do |id|
+          file_path = File.join(Workflow::Path.grobid_tei, "#{Workflow::Utils.to_filename(id)}.tei.xml")
           data = {
-            "DOI": doi
+            "DOI": id
           }
           Item.from_tei_file(file_path, data)
         end

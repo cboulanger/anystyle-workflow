@@ -2,16 +2,13 @@
 
 module Datasource
   class Wos < Datasource
-    CSL_CUSTOM_FIELDS = [
-      TIMES_CITED = 'wos-times-cited',
-      AUTHORS_AFFILIATIONS = 'wos-item-authors-affiliations'
-    ].freeze
+
 
     class << self
-      def import_items(dois)
+      def import_items(ids)
         @cache ||= ::Datasource.get_vendor_data(['wos'])['wos']
-        dois.map do |doi|
-          data = @cache[doi.sub('/', '_')]
+        ids.map do |id|
+          data = @cache[id] || @cache[id.sub('/', '_')]
           data && Item.new(data)
         end
       end

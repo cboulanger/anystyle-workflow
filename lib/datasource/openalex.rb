@@ -216,7 +216,7 @@ module Datasource
         end
 
         def abstract_inverted_index=(inv_index)
-          return if inv_index.nil?
+          return if inv_index.to_s.empty?
 
           text = []
           inv_index.each { |word, list| list.each { |i| text[i] = word } }

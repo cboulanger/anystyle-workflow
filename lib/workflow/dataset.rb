@@ -2,7 +2,6 @@
 
 module Workflow
   class Dataset
-
     include ::Utils::NLP
 
     MERGE_POLICIES = [
@@ -17,7 +16,7 @@ module Workflow
       # remove duplicates, using an author/year heuristic
       REMOVE_DUPLICATES = 'remove_duplicates',
       # Add affiliation data if available
-      ADD_AFFILIATIONS = 'add_affiliations',
+      ADD_AFFILIATIONS = 'add_affiliations'
     ].freeze
 
     # @!attribute [Boolean] verbose If true, output verbose logging instead of progress meter
@@ -39,6 +38,7 @@ module Workflow
       :authors_ignore_list,
       :affiliation_ignore_list,
       :abbr_disamb_langs,
+      :abbreviate_titles,
       keyword_init: true
     ) do
       def initialize(*)
@@ -46,13 +46,14 @@ module Workflow
         self.generate_abstract = true if generate_abstract.nil?
         self.generate_keywords = true if generate_keywords.nil?
         self.use_cache = true if use_cache.nil?
+        self.abbreviate_titles = false if abbreviate_titles.nil?
         self.policies ||= [ADD_MISSING_ALL, ADD_UNVALIDATED, REMOVE_DUPLICATES, ADD_AFFILIATIONS]
         self.authors_ignore_list ||= []
         self.affiliation_ignore_list ||= []
-        self.abbr_disamb_langs ||= ['eng', 'ger']
+        self.abbr_disamb_langs ||= %w[eng ger]
         raise "Invalid text_dir #{text_dir}" unless text_dir.nil? || Dir.exist?(text_dir)
         return unless stopword_files.is_a?(Array) &&
-          (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
+                      (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
 
         raise "The following stopword files do not exist or are not accessible: \n#{invalid.join("\n")}"
       end
@@ -72,8 +73,12 @@ module Workflow
 
       @options = options
       @journal_abbreviations = {}
+      # @type [Array<Format::CSL::Item>]
       @items = items || []
     end
+
+    # @return  [Array<Format::CSL::Item>]
+    attr_reader :items
 
     # @!attribute [r] length
     # @return [Integer]
@@ -91,7 +96,7 @@ module Workflow
       end
     end
 
-    # @param [Array<String>] ids An array of ids that identify the references, such as a DOI, which can be used 
+    # @param [Array<String>] ids An array of ids that identify the references, such as a DOI, which can be used
     #   to call #merge_and_validate
     # @param [Integer] limit Limits the number of generated items (mainly for test purposes)
     def import(ids, datasources: nil, limit: nil)
@@ -108,14 +113,13 @@ module Workflow
       counter = 0
       total = [@ids.length, limit || @ids.length].min
 
-      progress_or_message 'Generating consolidated data', total: total
+      progress_or_message('Generating consolidated data', total:)
 
-      # iterate over CSL-JSON files in source directory
+      # iterate over ids
       @ids.each do |id|
-
         progress_or_message "Processing #{id}\n#{'=' * 80}".colorize(:blue), increment: true
 
-        if @options.use_cache && (item_data = items_cache[id])
+        if @options.use_cache && (item_data = items_cache[id] || items_cache[Utils.to_filename(id)])
           # use the cached item if exists
           item = Format::CSL::Item.new(item_data)
           @items.append(item)
@@ -123,16 +127,20 @@ module Workflow
           next
         else
           # get the item merged from the different datasources
-          item = merge_and_validate(id, @datasources)
+          progress_or_message "no cache for #{id}".colorize(:yellow)
+          begin
+            item = merge_and_validate(id, @datasources)
+          rescue StandardError => e
+            puts e.to_s.colorize(:red)
+            next
+          end
         end
 
-        # ignore items without any authors (such as book report sections)
-        next if item.creators.empty?
-
         # add generated abstract and keywords if there are no in the metadata
-        if @options.generate_abstract
+        if (item.abstract.to_s.empty? && @options.generate_abstract) || \
+           (item.keyword.to_a.empty? && @options.generate_keywords)
           progress_or_message ' - Generating abstract and keywords from fulltext'
-          txt_file_path = File.join(@options.text_dir, "#{id}.txt")
+          txt_file_path = File.join(@options.text_dir, "#{Workflow::Utils.to_filename(id)}.txt")
           text = File.read(txt_file_path, encoding: 'utf-8')
           add_metadata_from_text(item, text)
         end
@@ -146,7 +154,7 @@ module Workflow
         # iso4 abbreviations
         if item.type == Format::CSL::ARTICLE_JOURNAL
           add_journal_abbreviation(item) if item.journal_abbreviation.to_s.empty?
-        else
+        elsif @options.abbreviate_titles
           add_title_abbreviations(item)
         end
 
@@ -166,6 +174,47 @@ module Workflow
       end
       progress_or_message finish: true
       @items
+    end
+
+    def build_indexes
+      raise 'You must first load or import dataset items' if @items.to_a.empty?
+
+      @id_index = {}
+      @affiliation_index = {}
+      @items.each do |item|
+        author, year, title = item.creator_year_title(downcase: true)
+        @id_index[author] = {} if @id_index[author].nil?
+        @id_index[author][year] = {} if @id_index[author][year].nil?
+        @id_index[author][year][title] = item.id
+        item.creators.each do |c|
+          @affiliation_index["#{c.family} #{c.initial}"] ||= c.x_affiliations.to_a.first
+        end
+      end
+    end
+
+    def add_missing_references
+      build_indexes if @id_index.nil?
+      @items.each do |item|
+        item.x_references.each do |ref|
+          next unless ref.doi.to_s.empty?
+
+          author, year, title = ref.creator_year_title(downcase: true)
+          next if @id_index[author].to_h[year].to_h.empty?
+
+          ref.doi = @id_index[author][year][title] || @id_index[author][year].values.first
+        end
+      end
+    end
+
+    def add_missing_affiliations
+      build_indexes if @id_index.nil?
+      @items.each do |item|
+        item.creators.each do |c|
+          if c.x_affiliations.to_a.empty? && (aff = @affiliation_index["#{c.family} #{c.initial}"])
+            c.x_affiliations = [aff]
+          end
+        end
+      end
     end
 
     # Export the dataset using the given exporter class
@@ -205,6 +254,8 @@ module Workflow
     end
 
     def save(dataset_name)
+      add_missing_references
+      add_missing_affiliations
       File.binwrite(Dataset.dataset_path(dataset_name), Marshal.dump(@items))
     end
 
@@ -213,17 +264,14 @@ module Workflow
     # Given an identifier, merge available data. Anystyle references will be validated against the vendor references.
     # @param [String] item_id
     # @return [Format::CSL::Item]
-    # @param [Array<String>] datasources
-    def merge_and_validate(item_id, datasources)
-      Datasource::Anystyle.verbose = @options.verbose
-      Datasource::Crossref.verbose = @options.verbose
+    # @param [Array<String>] datasource_ids
+    def merge_and_validate(item_id, datasource_ids)
 
-      raise 'Item id must be a DOI' unless item_id.start_with? '10.'
+      raise 'Id currently must be a DOI' unless item_id.start_with? '10.'
 
-      doi = item_id.sub('_', '/')
       # get anystyle item (enriched with crossref metadata)
       # @type [Item]
-      item = Datasource::Anystyle.import_items([doi]).first
+      item = Datasource::Anystyle.import_items([item_id]).first
 
       raise "No data available for ID #{item_id}" if item.nil?
 
@@ -238,13 +286,16 @@ module Workflow
       num_anystyle_unvalidated_refs = 0
 
       # lookup with crossref metadata by doi
-      vendors = datasources
-      vendors.each do |vendor|
+      datasource_ids.each do |datasource_id|
+        # @type [::Datasource::Datasource]
+        datasource = ::Datasource.by_id(datasource_id)
+        datasource.verbose = @options.verbose
+
         # @type [Format::CSL::Item]
-        vendor_item = ::Datasource.by_id(vendor).import_items([doi]).first
+        vendor_item = datasource.import_items([item_id]).first
 
         if vendor_item.nil?
-          puts " - #{vendor}: No data available".colorize(:red) if @options.verbose
+          puts " - #{datasource_id}: No data available".colorize(:red) if @options.verbose
           next
         end
 
@@ -257,10 +308,10 @@ module Workflow
           # add all found references, this leads to a lot of duplicates
           validated_references += vendor_refs
           num_vendor_added_refs += vendor_refs.length
-          if @options.verbose && vendor_refs.length.positive?
-            puts " - #{vendor}: added #{vendor_refs.length} references" if @options.verbose
+          if @options.verbose && vendor_refs.length.positive? && @options.verbose
+            puts " - #{datasource_id}: added #{vendor_refs.length} references"
           end
-        else
+        elsif item.x_references.length.positive?
           # match each anystyle reference against all vendor references since we cannot be sure they are in the same order
           # this can certainly be optimized but is good enough for now
           vendor_refs.each do |vendor_ref|
@@ -269,7 +320,6 @@ module Workflow
 
             matched = false
             item.x_references.each do |ref|
-
               # add missing type
               ref.type ||= vendor_ref.type || Format::CSL.guess_type(ref)
 
@@ -288,12 +338,15 @@ module Workflow
               ref.validate_by(vendor_ref)
 
               # add affiliations
-              add_affiliations(ref, vendor_ref, vendor)
+              add_affiliations(ref, vendor_ref, datasource_id)
+
+              # add missing doi
+              ref.doi ||= vendor_ref.doi if vendor_ref.doi
 
               # add only if reference hasn't been validated already
               unless ref.custom.validated_by.keys.count > 1
                 validated_references.append(ref)
-                puts " - anystyle: Added #{author} #{year} (validated by #{vendor})" if @options.verbose
+                puts " - anystyle: Added #{author} #{year} (validated by #{datasource_id})" if @options.verbose
                 num_anystyle_added_refs += 1
               end
               num_anystyle_validated_refs += 1
@@ -301,7 +354,7 @@ module Workflow
             end
             next if matched
 
-            next unless policies.include?(ADD_MISSING_ALL) || (policies.include?(ADD_MISSING_FREE) && vendor != 'wos')
+            next unless policies.include?(ADD_MISSING_ALL) || (policies.include?(ADD_MISSING_FREE) && datasource_id != 'wos')
 
             # add missing type
             vendor_ref.type ||= Format::CSL::Item.guess_type(vendor_ref)
@@ -314,13 +367,13 @@ module Workflow
             end
 
             validated_references.append(vendor_ref)
-            puts " - #{vendor}: Added #{vendor_author} (#{vendor_year}) " if @options.verbose
+            puts " - #{datasource_id}: Added #{vendor_author} (#{vendor_year}) " if @options.verbose
             num_vendor_added_refs += 1
           end
         end
 
         if @options.verbose && num_vendor_added_refs.positive?
-          puts " - #{vendor}: validated #{num_anystyle_validated_refs} anystyle references " \
+          puts " - #{datasource_id}: validated #{num_anystyle_validated_refs} anystyle references " \
                  "(of which #{num_anystyle_added_refs} were added), " \
                  "and added #{num_vendor_added_refs} missing references"
         end
@@ -329,7 +382,7 @@ module Workflow
         item.custom.times_cited = [vendor_item.custom.times_cited || 0, item.custom.times_cited || 0].max
 
         # add affiliation data if missing
-        add_affiliations(item, vendor_item, vendor) if policies.include?(ADD_AFFILIATIONS)
+        add_affiliations(item, vendor_item, datasource_id) if policies.include?(ADD_AFFILIATIONS)
 
         # add abstract if missing
         item.abstract ||= vendor_item.abstract
@@ -427,18 +480,17 @@ module Workflow
     # @param [String] text
     def add_metadata_from_text(item, text)
       if text.to_s.strip.empty?
-        STDERR.puts "Cannot add metadata from empty text for document with id '#{item.id}'.".colorize(:red)
+        warn "Cannot add metadata from empty text for document with id '#{item.id}'.".colorize(:red)
         return
 
       end
       begin
         abstract, keywords, language = summarize(text, ratio: 5, topics: true, stopword_files: @options.stopword_files)
       rescue StandardError => e
-        STDERR.puts "Problem summarizing document with id '#{item.id}': #{e.to_s}".colorize(:red)
+        warn "Problem summarizing document with id '#{item.id}': #{e}".colorize(:red)
         return
-
       end
-      item.abstract = abstract if item.abstract.to_s.empty?
+      item.abstract = abstract if @options.generate_abstract && item.abstract.to_s.empty?
       item.keyword = keywords if @options.generate_keywords && item.keyword.empty?
       item.language ||= language if language
     end
@@ -451,7 +503,7 @@ module Workflow
       begin
         _, keywords = summarize(reference_corpus, topics: true, stopword_files: @options.stopword_files)
       rescue StandardError => e
-        STDERR.puts "Problem summarizing references of document with id '#{item.id}': #{e.to_s}\n#{reference_corpus}".colorize(:red)
+        warn "Problem summarizing references of document with id '#{item.id}': #{e}\n#{reference_corpus}".colorize(:red)
         return
       end
       item.custom.generated_keywords = keywords.reject { |kw| kw.length < 4 }

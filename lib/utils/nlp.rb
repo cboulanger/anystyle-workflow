@@ -63,7 +63,7 @@ module Utils
         File.readlines(file_path).each do |line|
           if line.start_with? '/'
             # interpret as regular expression
-            regex = Regexp.compile(line.strip.gsub(%r{^/|/i?$}, ''), line.end_with?('i') ? Regexp::IGNORECASE : nil )
+            regex = Regexp.compile(line.strip.gsub(%r{^/|/i?$}, ''), line.end_with?('i') ? Regexp::IGNORECASE : nil)
             text.gsub!(regex, '')
           else
             text.gsub!(line.strip, '')
@@ -72,7 +72,12 @@ module Utils
       end
       abstract, topics = text.summarize(language:, ratio:, topics:)
       abstract = abstract.force_encoding('utf-8')
-      topics = topics.force_encoding('utf-8').split(',').compact.reject(&:empty?)
+      topics = topics.force_encoding('utf-8')
+                     .split(',')
+                     .compact
+                     .reject(&:empty?)
+                     .reject { |w| w.length < 3 }
+                     .map { |k| k.gsub(/[^\p{L}-]/, '') }
       # remove line breaks from abstract
       while abstract.match(/\n|\r|\s\s/)
         abstract.gsub!(/\p{Pd} ?\n/, '')

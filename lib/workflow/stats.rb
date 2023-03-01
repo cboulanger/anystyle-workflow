@@ -84,5 +84,7 @@ module Workflow
       File.write(outfile, stats.map(&:to_csv).join)
       puts "Data written to #{outfile}..."
     end
+
+
   end
 end

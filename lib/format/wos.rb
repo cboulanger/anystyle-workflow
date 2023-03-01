@@ -90,7 +90,7 @@ module Format
           cit.append("P#{item.page_first}") if item.page_first
           cit.append("DOI #{to_di(item)}") if item.doi
         when Format::CSL::CHAPTER
-          cit.append(to_ji(item))
+          cit.append(to_ji(item) || to_iso4_title(item))
           cit.append("P#{item.page_first}") if item.page_first
           cit.append("DOI #{to_di(item)}") if item.doi
         when Format::CSL::BOOK, Format::CSL::COLLECTION

@@ -6,10 +6,9 @@ module Datasource
         ids.map do |id|
           # use crossref item for metadata
           Crossref.verbose = self.verbose
-          doi = id.sub('_', '/')
-          data = Crossref.import_items([doi], include_references: false).first.to_h
+          data = Crossref.import_items([id], include_references: false).first.to_h
           item = Item.new(data)
-          file_path = File.join(::Workflow::Path.csl, "#{id.sub('/', '_')}.json")
+          file_path = File.join(::Workflow::Path.csl, "#{Workflow::Utils.to_filename(id)}.json")
           next unless File.exist?(file_path)
 
           item.x_references = JSON.load_file(file_path).map { |ref| Item.new(ref) }

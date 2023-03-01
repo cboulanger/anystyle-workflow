@@ -91,6 +91,19 @@ module Datasource
     end
 
     class Creator < Format::CSL::Creator
+
+      def name=(name)
+        self.literal = name
+      end
+
+      def orcid=(orcid)
+        self.x_orcid = orcid
+      end
+
+      def authenticated_orcid=(orcid)
+        self.x_orcid = orcid
+      end
+
       def affiliation=(affiliation)
         self.x_affiliations = affiliation.map { |a| Affiliation.new({ 'literal': a }) }
       end
@@ -104,9 +117,9 @@ module Datasource
 
       # to do map any field that might be usable
       IGNORE_FIELDS = %w[license indexed reference-count content-domain created source funder article-number notes
-                         is-referenced-by-count references-count prefix member original-title link deposited
+                         is-referenced-by-count isbn_type references-count prefix member original-title link deposited
                          score resource subtitle short-title subject relation published-online doi-asserted-by
-                         journal-issue alternative-id container-title-short published published-print].freeze
+                         journal-issue alternative-id container-title-short published published-print publisher_location].freeze
 
       def initialize(data, accessor_map: {})
         custom.metadata_source = 'crossref'
@@ -121,7 +134,7 @@ module Datasource
 
       def author=(authors)
         if authors.is_a? String
-          _author = Creator.new(({literal: authors}))
+          _author = Creator.new(({ literal: authors }))
           _author.family, _author.given = _author.family_and_given
           authors = [_author]
         end
@@ -182,7 +195,6 @@ module Datasource
       def journal_title=(title)
         self.container_title = title
       end
-
 
       protected
 

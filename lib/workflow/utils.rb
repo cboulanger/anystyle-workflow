@@ -4,7 +4,11 @@ module Workflow
   class Utils
     class << self
       def datasource_ids
-        %w[crossref openalex grobid dimensions wos]
+        %w[grobid openalex crossref dimensions wos]
+      end
+
+      def to_filename(id)
+        id.gsub('/','_')
       end
 
       # Given a journal or book title, abbreviate it according to ISO4 rules. Titles are limited to 8 words.

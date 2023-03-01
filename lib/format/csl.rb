@@ -212,7 +212,7 @@ module Format
       end
 
       def initial
-        given.scan(/\p{L}+/)&.map { |n| n[0] }&.join('')
+        given.to_s.scan(/\p{L}+/)&.map { |n| n[0] }&.join('')
       end
 
       private
