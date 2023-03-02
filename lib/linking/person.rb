@@ -1,6 +1,6 @@
 require 'httpx'
 
-module Matcher
+module Linking
   module PersonMatcher
     def lookup
       response = HTTPX.get("https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY")

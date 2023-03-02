@@ -1,3 +1,0 @@
-module Config
-
-end

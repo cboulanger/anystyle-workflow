@@ -1,11 +1,11 @@
-# frozen_string_literal: true
+require './lib/datasource/datasource'
 
 require 'httpx'
 require 'erb'
 require 'throttle'
 
 module Datasource
-  class OpenAlex < Datasource
+  class OpenAlex < ::Datasource::Datasource
 
     HTTPX::Plugins.load_plugin(:follow_redirects)
     HTTPX::Plugins.load_plugin(:retries)

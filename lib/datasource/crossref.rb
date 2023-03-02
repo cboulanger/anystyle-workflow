@@ -1,11 +1,11 @@
-# frozen_string_literal: true
+require './lib/datasource/datasource'
 
 require 'serrano'
 require 'namae'
 require 'digest'
 
 module Datasource
-  class Crossref < Datasource
+  class Crossref < ::Datasource::Datasource
 
     TYPES_MAP = {
       'journal-article' => Format::CSL::ARTICLE_JOURNAL

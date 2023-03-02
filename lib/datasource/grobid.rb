@@ -1,9 +1,9 @@
-# frozen_string_literal: true
+require './lib/datasource/datasource'
 
 require 'nokogiri'
 
 module Datasource
-  class Grobid < Datasource
+  class Grobid < ::Datasource::Datasource
     CSL_CUSTOM_FIELDS = [
       AUTHOR_AFFILIATIONS = 'grobid-author-affiliations'
     ].freeze

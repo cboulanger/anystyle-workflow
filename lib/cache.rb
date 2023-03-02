@@ -1,5 +1,5 @@
 # frozen_string_literal: true
-
+# To do: rewrite & move into Utils module
 class Cache
   CACHE_DIR = 'tmp/cache'
   MODE_JSON = 'json'

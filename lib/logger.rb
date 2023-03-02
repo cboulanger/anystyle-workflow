@@ -1,6 +1,6 @@
 require 'logger'
 
-# replace with https://github.com/TwP/logging
+# replace with https://github.com/TwP/logging, integrate with Feedback module
 #require 'logging'
 
 $logger = Logger.new('tmp/logfile.log')

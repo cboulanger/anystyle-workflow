@@ -6,6 +6,8 @@ module Format
   # Extensions to the standard schema are prefixed with "x_"
   # @see https://citeproc-js.readthedocs.io/en/latest/csl-json/markup.html
   # @see https://github.com/citation-style-language/schema/blob/master/schemas/input/csl-data.json
+  # To do: this is not a "format", this is a data model and will be moved to the "Model" module.
+  # The format would be the serialized CSL-JSON version which is produced by the exporter.
   module CSL
     CSL_TYPES = [
       'article',
@@ -55,9 +57,10 @@ module Format
       'webpage'
     ].freeze
 
-    class Object
+    class Object < Model::Model
       # Initialize an object with values
       def initialize(data, accessor_map: {})
+        super()
         @_accessor_map = accessor_map
         @_key_map = @_accessor_map.invert
         data.each do |k, v|
@@ -260,6 +263,10 @@ module Format
                      literal
                    end
       end
+
+      def to_s
+        @literal || [@center, @department, @institution].compact.join(", ")
+      end
     end
 
     # Custom
@@ -325,7 +332,7 @@ module Format
       # @!attribute id
       # @return [String]
       def id
-        doi || isbn&.first || citation_key || creator_year_title.join('_').gsub(' ', '_')[..50]
+        doi || isbn&.first || citation_key || creator_year_title.join('_').gsub(%r{[^_\p{L}\p{N}]}, '')[..30]
       end
 
       def author=(authors)

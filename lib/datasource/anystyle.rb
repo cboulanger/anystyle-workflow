@@ -1,5 +1,7 @@
+require './lib/datasource/datasource'
+
 module Datasource
-  class Anystyle < Datasource
+  class Anystyle < ::Datasource::Datasource
     class << self
       # @return [Array<Item>]
       def import_items(ids, include_references: false, include_abstract: false)

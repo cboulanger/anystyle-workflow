@@ -154,4 +154,3 @@ end
 
 Workflow::Path.base = File.realpath(File.join(File.dirname($PROGRAM_NAME), 'data'))
 Workflow::Path.tmp = File.realpath(File.join(File.dirname($PROGRAM_NAME), 'tmp'))
-Workflow::Path.models = File.realpath(File.join(File.dirname($PROGRAM_NAME), 'models'))

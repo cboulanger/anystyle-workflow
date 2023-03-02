@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Matcher
+module Linking
   # Matcher that works on csl-json items
   class CslMatcher
     class << self

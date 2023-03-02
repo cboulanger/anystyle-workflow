@@ -1,4 +1,4 @@
-# frozen_string_literal: true
+require './lib/datasource/datasource'
 
 require 'csv'
 require 'namae'
@@ -6,7 +6,7 @@ require './lib/cache'
 
 module Datasource
 
-  class Dimensions < Datasource
+  class Dimensions < ::Datasource::Datasource
 
     CSL_CUSTOM_FIELDS = [
       TIMES_CITED = 'dimensions-times-cited',
