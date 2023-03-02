@@ -315,6 +315,7 @@ if ARGV.include? 'export-dataset'
   out_path ||= File.join(Workflow::Path.export, "export-#{Workflow::Utils.timestamp}.#{format}")
   exporter = Export::Exporter.by_id(format).new(out_path,
                                                 compact: !ARGV.include?('--no-compact'),
+                                                verbose: ARGV.include?('--verbose'),
                                                 pretty: ARGV.include?('--pretty'),
                                                 encoding:)
   dataset.export(exporter, limit:)

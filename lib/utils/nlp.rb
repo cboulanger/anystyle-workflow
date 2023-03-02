@@ -2,7 +2,7 @@
 
 # to install the summarize gem on Debian, sudo apt install libglib2.0-dev  libxml2-dev
 
-require 'summarize'
+#require 'summarize'
 require 'scylla'
 
 module Utils

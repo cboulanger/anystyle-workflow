@@ -2,7 +2,6 @@ require './lib/datasource/datasource'
 
 require 'httpx'
 require 'erb'
-require 'throttle'
 
 module Datasource
   class OpenAlex < ::Datasource::Datasource

@@ -9,6 +9,8 @@ module Export
         CSL_JSON
       when 'cypher'
         Cypher
+      when 'neo4j'
+        Neo4j
       else
         raise "Unknown exporter '#{id}'"
       end
@@ -19,11 +21,12 @@ module Export
     #   missing fields
     # @param [String] encoding
     # @param [Boolean] pretty If true, format output to be more human-readable
-    def initialize(outfile, compact: true, encoding: 'utf-8', pretty: false)
+    def initialize(outfile = nil, compact: true, encoding: 'utf-8', pretty: false, verbose: false)
       @outfile = outfile
       @compact = compact
       @encoding = encoding
       @pretty = pretty
+      @verbose = verbose
     end
 
     def name

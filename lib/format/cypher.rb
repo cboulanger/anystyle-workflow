@@ -3,20 +3,34 @@ require './lib/format/format'
 
 module Format
   class Cypher < ::Format::Format
+
+    def self.header
+      [
+        'CREATE CONSTRAINT work_id IF NOT EXISTS ON (w:Work) ASSERT w.id IS UNIQUE;',
+        'CREATE INDEX author_family IF NOT EXISTS FOR (a:Author) ON (a.family)',
+        'CREATE INDEX author_given IF NOT EXISTS FOR (a:Author) ON (a.given)',
+      #'CALL db.awaitIndexes();'
+      ]
+    end
+
     def serialize
       # @type [Format::CSL::Item]
       @item = @item
 
       output = []
+
+      # works
       output.append(
         <<~CYPHER
-          MERGE (w:Work {title: #{JSON.dump @item.title}, year:#{@item.issued&.to_year||0}})
+          MERGE (w:Work {id: "#{@item.id}"})
               ON CREATE SET
-                w.type = "#{@item.type}",
-                w.id = "#{@item.id}"
+                w.title = #{JSON.dump @item.title||"NO TITLE"},
+                w.year = #{@item.issued&.to_year||0},
+                w.type = "#{@item.type}"
       CYPHER
       )
 
+      # authors
       @item.creators.each_with_index do |creator, index|
         a_var = "a#{(index + 1).to_s}"
         output.append(
@@ -26,8 +40,8 @@ module Format
         CYPHER
         )
 
-        creator.x_affiliations&.each_with_index do |affiliation, index|
-          i_var = "i#{(index + 1).to_s}"
+        creator.x_affiliations&.each_with_index do |affiliation, i_index|
+          i_var = "i#{(index + 1).to_s}#{(i_index + 1).to_s}"
           output.append(
             <<~CYPHER
               MERGE (#{i_var}:Institution {name: #{JSON.dump affiliation.to_s}})
@@ -37,6 +51,7 @@ module Format
         end
       end
 
+      # containers
       if @item.container_title
         output.append(
           <<~CYPHER
@@ -62,10 +77,11 @@ module Format
 
       output.append('RETURN *;')
 
+      # references
       unless @item.x_references.empty?
         output.append("// #{'-' * 80}") if @pretty
         @item.x_references.each_with_index do |ref, index|
-          output.append Cypher.new(ref, citing_item: item, pretty:).serialize
+          output.append Cypher.new(ref, citing_item: item, pretty:@pretty).serialize
         end
       end
 
