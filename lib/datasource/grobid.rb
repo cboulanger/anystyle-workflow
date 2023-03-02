@@ -14,10 +14,12 @@ module Datasource
       def import_items(item_ids, include_references: false, include_abstract: false)
         item_ids.map do |id|
           file_path = File.join(Workflow::Path.grobid_tei, "#{Workflow::Utils.to_filename(id)}.tei.xml")
-          data = {
-            "DOI": id
-          }
-          Item.from_tei_file(file_path, data)
+          if File.exist? file_path
+            data = {
+              "DOI": id
+            }
+            Item.from_tei_file(file_path, data)
+          end
         end
       end
     end

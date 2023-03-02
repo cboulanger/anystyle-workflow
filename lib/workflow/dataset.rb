@@ -53,32 +53,40 @@ module Workflow
         self.abbr_disamb_langs ||= %w[eng ger]
         raise "Invalid text_dir #{text_dir}" unless text_dir.nil? || Dir.exist?(text_dir)
         return unless stopword_files.is_a?(Array) &&
-                      (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
+          (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
 
         raise "The following stopword files do not exist or are not accessible: \n#{invalid.join("\n")}"
       end
     end
+
 
     # Creates a dataset of Format::CSL::Item objects which can be exported to
     # target formats
     #
     # @param [Array<Format::CSL::Items>] items
     # @param [Workflow::Dataset::Options] options
-    def initialize(items = [], options: Workflow::Dataset::Options.new)
+    # @param [String] name Optional dataset name
+    def initialize(items = [], options: nil, name: nil)
       raise 'Argument must be array of Format::CSL::Items' \
           unless items.is_a?(Array) && items.reject { |i| i.is_a? Format::CSL::Item }.empty?
 
+      options ||= Workflow::Dataset::Options.new
       raise 'Options must be Workflow::Dataset::Options object' \
           unless options.is_a? Workflow::Dataset::Options
 
       @options = options
+      @name = name
       @journal_abbreviations = {}
       # @type [Array<Format::CSL::Item>]
-      @items = items || []
+      @items = []
+      @id_index = {}
+      items.each { |item| add_item item}
     end
 
     # @return  [Array<Format::CSL::Item>]
-    attr_reader :items
+    attr_reader :items, :name
+
+    alias_method :to_a, :items
 
     # @!attribute [r] length
     # @return [Integer]
@@ -86,14 +94,17 @@ module Workflow
       @items.length
     end
 
-    # @param [Array<Format::CSL::Item>] items An array of Format::CSL::Item objects
-    def add(items)
-      raise 'Argument must be an non-empty array of Format::CSL::Items or of string ids' \
-          unless items.is_a?(Array) && items.first.is_a?(Format::CSL::Item)
+    # @param [Format::CSL::Item] item
+    def add_item(item)
+      raise 'Argument must be a Format::CSL::Item' unless item.is_a?(Format::CSL::Item)
 
-      items.each do |item|
-        @items.append(item)
-      end
+      @items.append(item)
+      @id_index[item.id] = item
+    end
+
+    # @return [Format::CSL::Item]
+    def item_by_id(id)
+      @id_index[id]
     end
 
     # @param [Array<String>] ids An array of ids that identify the references, such as a DOI, which can be used
@@ -122,7 +133,7 @@ module Workflow
         if @options.use_cache && (item_data = items_cache[id] || items_cache[Utils.to_filename(id)])
           # use the cached item if exists
           item = Format::CSL::Item.new(item_data)
-          @items.append(item)
+          add_item(item)
           progress_or_message ' - Using cached data'
           next
         else
@@ -164,7 +175,7 @@ module Workflow
           add_reference_keywords(item)
         end
 
-        @items.append(item)
+        add_item(item)
         items_cache[id] = item.to_h
         counter += 1
         # save cache every 10 items
@@ -173,7 +184,7 @@ module Workflow
         break if limit && counter >= limit
       end
       progress_or_message finish: true
-      @items
+      items
     end
 
     def build_indexes
@@ -241,12 +252,12 @@ module Workflow
     # @param [String] dataset_name
     # @return [Workflow::Dataset]
     def self.load(dataset_name, options: nil)
-      _dataset_path = dataset_path(dataset_name)
-      raise "Dataset '#{dataset_name}' does not exist." unless File.exist? _dataset_path
+      dataset_path = dataset_path(dataset_name)
+      raise "Dataset '#{dataset_name}' does not exist." unless File.exist? dataset_path
 
       # @type [Array<Format::CSL::Item]
-      items = Marshal.load(File.binread(_dataset_path))
-      new(items, options:)
+      items = Marshal.load(File.binread(dataset_path))
+      new(items, options:, name: dataset_name)
     end
 
     def self.dataset_path(dataset_name)

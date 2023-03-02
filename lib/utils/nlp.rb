@@ -2,9 +2,6 @@
 
 # to install the summarize gem on Debian, sudo apt install libglib2.0-dev  libxml2-dev
 
-#require 'summarize'
-require 'scylla'
-
 module Utils
   module NLP
     # Languages supported by summarize
@@ -54,8 +51,14 @@ module Utils
     # @param [Array] stopword_files
     # @return [Array<String, Array, String>] An array of [abstract, keywords, language]
     def summarize(text, ratio: 50, topics: false, stopword_files: [])
+      if @languages.nil?
+        # we require this inline because summarize doesn't compile in all environments
+        require 'summarize'
+        require 'scylla'
+        @languages = LANGUAGES.invert
+      end
       skylla_lang = text.language
-      language = LANGUAGES.invert[skylla_lang]
+      language = @languages[skylla_lang]
       raise "Language '#{skylla_lang}' is not supported by the auto-summarizer" if language.nil?
 
       # remove literal phrases or those which match a regular expressions
