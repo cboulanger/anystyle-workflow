@@ -61,6 +61,7 @@ HELP = \
          [--parser|--finder]               check only the given model, both if omitted
          [--gold-dir /path/to/gold']       path to the dir containing the gold to be checked, must be last argument
                                            if omitted, the data/0-gold-* folders are used
+         [--limit 10]                       Maximum number of files processed - for testing
 
     generate-dataset <name>                Generates a dataset with the given name
         [--input-dir]                      Path to the directory containing the AnyStyle CSL-JSON files, defaults to the
@@ -167,6 +168,10 @@ end
 # ############################################################################################################
 
 if ARGV.include? 'stats'
+
+  arg_name = '--out-path'
+  out_path = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
+
   arg_name = '--fulltext-dir'
   text_dir = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
 
@@ -180,6 +185,9 @@ if ARGV.include? 'stats'
   arg_name = '--dataset'
   dataset_name = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
   dataset = Workflow::Dataset.load(dataset_name) if dataset_name
+
+  arg_name = '--limit'
+  limit = ARGV[(ARGV.index(arg_name) + 1)].to_i if ARGV.include? arg_name
 
   ids = if id_file
           raise "#{id_file} does not exist" unless File.exist? id_file
@@ -196,7 +204,9 @@ if ARGV.include? 'stats'
     text_dir:,
     verbose: ARGV.include?('--verbose'),
     type: ARGV.include?('--affiliations') ? 'affiliation' : 'reference',
-    dataset:
+    dataset:,
+    limit:,
+    outfile: out_path
  )
 end
 

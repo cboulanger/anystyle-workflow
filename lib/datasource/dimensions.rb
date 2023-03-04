@@ -57,7 +57,8 @@ module Datasource
                 author['x-affiliations'] = [
                   {
                     'literal': aff_orgs.shift,
-                    'country': aff_countrys.shift
+                    'country': aff_countrys.shift,
+                    'x_affiliation_source': 'dimensions'
                   }
                 ]
               end

@@ -1,9 +1,11 @@
+# frozen_string_literal: true
+
 require './lib/export/exporter'
 require 'neo4j-ruby-driver'
 
+
 module Export
   class Neo4j < Exporter
-
     def name
       'Neo4j exporter'
     end
@@ -16,11 +18,15 @@ module Export
       auth = ::Neo4j::Driver::AuthTokens.basic(username, password)
       puts "Connecting to Neo4J on #{url}..." if @verbose
       @driver = ::Neo4j::Driver::GraphDatabase.driver(url, auth, encryption: false)
-      puts "Setting up indexes..." if @verbose
-      @driver.session do |session|
-        session.write_transaction do |tx|
-          ::Format::Cypher.header.each { |stmt| tx.run(stmt) }
+      begin
+        @driver.session do |session|
+          session.write_transaction do |tx|
+            ::Format::Cypher.header.each { |stmt| tx.run(stmt) }
+          end
         end
+      rescue StandardError => e
+        puts "Cannot connect to server: #{e}".colorize(:red)
+        exit(1)
       end
     end
 

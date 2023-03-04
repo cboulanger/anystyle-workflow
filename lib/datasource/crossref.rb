@@ -85,6 +85,12 @@ module Datasource
     end
 
     class Affiliation < Format::CSL::Affiliation
+
+      def initialize(data, accessor_map: nil)
+        super
+        self.x_affiliation_source = "crossref"
+      end
+
       def name=(name)
         self.literal = name
       end

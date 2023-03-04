@@ -194,24 +194,39 @@ module Format
         end
       end
 
+      # Returns family and given names and tries to parse them from the literal data if they don't exist
+      # TO DO:
+      # @return [Array<String>]
       def family_and_given
-        if family
-          [family, given]
+        if family || given
+          # TO DO "only given name exists" needs to be fixed in the import step
+          if family.nil? && given
+            [given, '']
+          else
+            family
+            [family, given || '']
+          end
         elsif (l = literal)
           case l
           when /^\p{Lu}+ \p{Lu}{1,3}$/ # this handles WoS entries, shouldn't be here
             p = l.split(' ')
-            [p[0].capitalize, p[1]]
+            [p[0].capitalize, p[1] || '']
           when /^\p{Lu}\p{Ll}+ \p{Lu}{1,3}$/ # this handles WoS entries, shouldn't be here
             p = l.split(' ')
-            [p[0].capitalize, p[1]]
+            [p[0].capitalize, p[1] || '']
           when /^\p{Lu}+$/ # this handles WoS entries, shouldn't be here
             [l.capitalize, '']
           else
             # normal case
             [parse_family(l), parse_given(l)]
           end
+        else
+          raise "Missing name data for #{JSON.dump(self)}"
         end
+      end
+
+      def to_s
+        family_and_given.join(', ')
       end
 
       def initial
@@ -226,13 +241,13 @@ module Format
 
       def parse_family(name)
         n = Namae.parse(name).first
-        return if n.nil?
+        return '' if n.nil?
 
         [n.particle, n.family].reject(&:nil?).join(' ')
       end
 
       def parse_given(name)
-        Namae.parse(name).first&.given
+        Namae.parse(name).first&.given || ''
       end
     end
 
@@ -249,7 +264,7 @@ module Format
     #
     class Affiliation < Object
       attr_accessor :center, :institution, :department, :address, :country,
-                    :country_code, :ror, :x_affiliation_api_url, :x_affiliation_id
+                    :country_code, :ror, :x_affiliation_api_url, :x_affiliation_id, :x_affiliation_source
 
       attr_reader :literal
 
@@ -267,6 +282,7 @@ module Format
       def to_s
         @literal || [@center, @department, @institution].compact.join(", ")
       end
+
     end
 
     # Custom
@@ -443,11 +459,15 @@ module Format
         @page_first || page.to_s.scan(/\d+/).first
       end
 
-      attr_accessor :authority, :citation_number, :doi, :isbn, :issn, :url, :abstract, :citation_key,
+      def url
+        @url || (@doi && "https://doi.org/#{@doi}") || @custom.metadata_api_url || ''
+      end
+
+      attr_accessor :authority, :citation_number, :doi, :isbn, :issn, :abstract, :citation_key,
                     :edition, :issue, :journal_abbreviation, :language, :locator, :note,
                     :page, :publisher, :publisher_place, :references, :volume
 
-      attr_writer :page_first
+      attr_writer :page_first, :url
 
       # currently not actively supported, although data can be stored
 

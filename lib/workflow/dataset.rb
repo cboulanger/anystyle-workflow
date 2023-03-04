@@ -59,7 +59,6 @@ module Workflow
       end
     end
 
-
     # Creates a dataset of Format::CSL::Item objects which can be exported to
     # target formats
     #
@@ -80,7 +79,8 @@ module Workflow
       # @type [Array<Format::CSL::Item>]
       @items = []
       @id_index = {}
-      items.each { |item| add_item item}
+      @affiliation_index = {}
+      items.each { |item| add_item item }
     end
 
     # @return  [Array<Format::CSL::Item>]
@@ -140,6 +140,7 @@ module Workflow
           # get the item merged from the different datasources
           progress_or_message "no cache for #{id}".colorize(:yellow)
           begin
+            # merge available data according to the policies
             item = merge_and_validate(id, @datasources)
           rescue StandardError => e
             puts e.to_s.colorize(:red)
@@ -190,8 +191,6 @@ module Workflow
     def build_indexes
       raise 'You must first load or import dataset items' if @items.to_a.empty?
 
-      @id_index = {}
-      @affiliation_index = {}
       @items.each do |item|
         author, year, title = item.creator_year_title(downcase: true)
         @id_index[author] = {} if @id_index[author].nil?
@@ -204,7 +203,7 @@ module Workflow
     end
 
     def add_missing_references
-      build_indexes if @id_index.nil?
+      build_indexes if @id_index.empty?
       @items.each do |item|
         item.x_references.each do |ref|
           next unless ref.doi.to_s.empty?
@@ -218,7 +217,7 @@ module Workflow
     end
 
     def add_missing_affiliations
-      build_indexes if @id_index.nil?
+      build_indexes if @id_index.empty?
       @items.each do |item|
         item.creators.each do |c|
           if c.x_affiliations.to_a.empty? && (aff = @affiliation_index["#{c.family} #{c.initial}"])
@@ -273,6 +272,9 @@ module Workflow
     protected
 
     # Given an identifier, merge available data. Anystyle references will be validated against the vendor references.
+    # TO DO: the caching stuff is confusing. we need a cache only to speed up re-runs when an error happens.
+    # On the other hand, the http responses are also cached but this cannot be controlled via CLI/API.
+    # Instead, caching of items should be off by default, caching of HTTP should be configurable.
     # @param [String] item_id
     # @return [Format::CSL::Item]
     # @param [Array<String>] datasource_ids
@@ -441,6 +443,8 @@ module Workflow
     def add_affiliations(item, vendor_item, vendor)
       item.creators.each do |creator|
         vendor_item.creators.each do |vendor_creator|
+
+          # ignore if the family name does not match
           next if creator.family != vendor_creator.family
 
           raw_affiliation = vendor_creator.x_raw_affiliation_string
@@ -457,14 +461,20 @@ module Workflow
           end
 
           creator.x_raw_affiliation_string ||= raw_affiliation
-          aff = creator.x_affiliations&.first&.to_h(compact: true)
           vendor_aff = vendor_creator.x_affiliations&.first&.to_h(compact: true)
           next if vendor_aff.nil?
 
-          next unless aff.nil? || vendor_aff.keys.length > aff.keys.length
+          creator.x_affiliations ||= []
+          aff = creator.x_affiliations.first&.to_h(compact: true)
+          new_aff = Format::CSL::Affiliation.new(vendor_aff)
+          if aff.nil? || vendor_aff.keys.length > aff.keys.length
+            # assume the better affiliation data is the one with more keys, prepend it
+            creator.x_affiliations.prepend new_aff
+          else
+            # otherwise add so it is not lost
+            creator.x_affiliations.append new_aff
+          end
 
-          # assume the better affiliation data is the one with more keys
-          creator.x_affiliations = [Format::CSL::Affiliation.new(vendor_aff)]
           puts " - #{vendor}: Added affiliation data #{JSON.dump(vendor_aff)}" if @options.verbose
         end
       end

@@ -149,6 +149,12 @@ module Datasource
       end
 
       class Affiliation < Format::CSL::Affiliation
+
+        def initialize(data, accessor_map: nil)
+          super
+          self.x_affiliation_source = 'openalex'
+        end
+
         def display_name=(name)
           self.literal = name
         end

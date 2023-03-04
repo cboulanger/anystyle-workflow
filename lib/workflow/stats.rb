@@ -1,20 +1,28 @@
+# frozen_string_literal: true
+
 module Workflow
   module Statistics
-
-    extend self
+    module_function
 
     # @param [Array<String>] ids
     # @param [Boolean] verbose
     # @param [String] type
     # @param [String] text_dir
     # @param [Workflow::Dataset] dataset
-    def generate(ids, verbose: false, type: 'reference', text_dir: nil, dataset: nil)
+    # @param [Integer] limit
+    def generate(ids,
+                 verbose: false,
+                 type: 'reference',
+                 outfile: nil,
+                 text_dir: nil,
+                 dataset: nil,
+                 limit: nil)
       unless verbose
         progressbar = ProgressBar.create(title: "Collecting statistics on #{type}s:",
                                          total: ids.length,
                                          **::Workflow::Config.progress_defaults)
       end
-      outfile = File.join(Path.stats, "#{type}-stats-#{Utils.timestamp}.csv")
+      outfile ||= File.join(Path.stats, "#{type}-stats-#{Utils.timestamp}.csv")
       stats = []
       case type
       when 'reference'
@@ -31,9 +39,7 @@ module Workflow
       columns += datasource_ids
 
       # dataset
-      if dataset
-        columns.append(dataset.name || 'dataset')
-      end
+      columns.append(dataset.name || 'dataset') if dataset
 
       # columns row
       stats.append columns
@@ -41,18 +47,23 @@ module Workflow
       # iterate over files
       puts "Analysing #{ids.length} documents..." if verbose
 
-      ids.each do |id|
+      ids.each_with_index do |id, index|
+        break if limit && index >= limit
+
         if verbose
-          puts " - #{id}"
+          puts " - #{id}".colorize(:green)
         else
           progressbar.increment unless verbose
         end
 
         crossref_item = Datasource::Crossref.import_items([id]).first
+
         if crossref_item.nil?
-          puts "No metadata for #{id}".colorize(:red)
+          puts "   No metadata".colorize(:red) if verbose
           next
         end
+
+        puts "   => #{crossref_item.creator_year_title.join(" ")}".colorize :green
 
         # dataset
         dataset_item = dataset.item_by_id(id) if dataset
@@ -106,16 +117,23 @@ module Workflow
           # count affiliations
           row += datasource_ids.map do |datasource_id|
             item = Datasource.by_id(datasource_id).import_items([id]).first
-            item&.creators&.reduce(0) { |sum, c| sum + (c.x_affiliations&.length || 0) }
+            puts "   #{datasource_id}:" if verbose
+            item&.creators&.reduce(0) do |sum, c|
+              aff = c.x_affiliations || []
+              puts "    #{c.to_s}: #{aff.map(&:to_h)}" if verbose
+              sum + aff.length
+            end
           end
 
           # dataset
           if dataset
+            puts "   #{dataset.name}:" if verbose
             row.append(dataset_item&.creators&.reduce(0) do |sum, c|
-              sum + (c.x_affiliations&.length || 0)
+              aff = c.x_affiliations || []
+              puts "    #{c.to_s}: #{aff.map(&:to_h)}" if verbose
+              sum + aff.length
             end)
           end
-
 
         end
         # write row

@@ -29,6 +29,7 @@ module Datasource
       def initialize(aff_node)
         super({})
         self.literal = aff_node.xpath('note/text()').to_s.strip
+        self.x_affiliation_source = 'grobid'
         unless aff_node.xpath('orgName').empty?
           self.institution = aff_node.xpath('orgName[@type=\'institution\']/text()').to_s
           self.department = aff_node.xpath('rgName[@type=\'department\']/text()').to_s
