@@ -30,7 +30,7 @@ module Format
                 w.title = #{JSON.dump @item.title&.downcase || 'no title'},
                 w.year = #{@item.issued&.to_year || 0},
                 w.type = "#{@item.type}",
-                w.url = "#{url}"
+                w.url = "#{@item.url}"
       CYPHER
       )
 
@@ -74,16 +74,16 @@ module Format
 
       # containers
       if @item.container_title
-        abbr_cont_title = if @item.type == ::Format::CSL::ARTICLE_JOURNAL && @item.journal_abbreviation
-                            @item.journal_abbreviation.downcase.gsub(/\p{P}/, '')
+        abbr_cont_title = (if @item.type == ::Format::CSL::ARTICLE_JOURNAL && @item.journal_abbreviation
+                            @item.journal_abbreviation
                           else
                             @item.custom.iso4_container_title || @item.container_title
-                          end
+                           end).downcase.gsub(/\p{P}/, '')
         output.append(
           <<~CYPHER
             MERGE (v:Venue {id: #{JSON.dump abbr_cont_title.downcase}})
               ON CREATE SET
-                v.name = #{JSON.dump @item.container_title},
+                v.name = #{JSON.dump @item.container_title.downcase},
                 v.issn = #{JSON.dump @item.issn&.first.to_s}
               MERGE (w)-[:PUBLISHED_IN]->(v)
         CYPHER
