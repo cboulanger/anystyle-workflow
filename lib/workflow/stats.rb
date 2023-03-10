@@ -24,14 +24,15 @@ module Workflow
       end
       outfile ||= File.join(Path.stats, "#{type}-stats-#{Utils.timestamp}.csv")
       stats = []
+      columns = %w[id journal year]
+      columns.append('fulltext') if text_dir
       case type
       when 'reference'
-        columns = %w[id journal year a_all a_rejected a_potential]
-      when 'affiliation'
-        columns = %w[id journal year]
-        columns.append('fulltext') if text_dir
+        columns += %w[a_all a_rejected a_potential]
+      when 'affiliation', 'abstract'
+        # pass
       else
-        raise "Type must be 'reference' or 'affiliation'"
+        raise "Invalid stat type '#{type}'"
       end
 
       # vendor data
@@ -45,7 +46,7 @@ module Workflow
       stats.append columns
 
       # iterate over files
-      puts "Analysing #{ids.length} documents..." if verbose
+      puts "Analysing #{ids.length} metadata records..." if verbose
 
       ids.each_with_index do |id, index|
         break if limit && index >= limit
@@ -63,7 +64,7 @@ module Workflow
           next
         end
 
-        puts "   => #{crossref_item.creator_year_title.join(" ")}".colorize :green
+        puts "   => #{crossref_item.creator_year_title.join(" ")}".colorize(:green) if verbose
 
         # dataset
         dataset_item = dataset.item_by_id(id) if dataset
@@ -72,6 +73,9 @@ module Workflow
         journal_abbrv = crossref_item.container_title.to_s.scan(/\S+/).map { |w| w[0] }.join
         row = [id, journal_abbrv, year]
         file_name = Utils.to_filename(id)
+
+        # fulltext available?
+        row.append File.exist?(File.join(text_dir, "#{file_name}.txt")) ? 1 : 0 if text_dir
 
         case type
         when 'reference'
@@ -106,13 +110,10 @@ module Workflow
           # dataset
           row.append dataset_item&.x_references&.length if dataset
 
-        else
+        when 'affiliation'
           # #################
           # Affiliation data
           # #################
-
-          # fulltext available?
-          row.append File.exist?(File.join(text_dir, "#{file_name}.txt")) ? 1 : 0 if text_dir
 
           # count affiliations
           row += datasource_ids.map do |datasource_id|
@@ -133,6 +134,20 @@ module Workflow
               puts "    #{c.to_s}: #{aff.map(&:to_h)}" if verbose
               sum + aff.length
             end)
+          end
+        when 'abstract'
+          # #################
+          # Abstract data
+          # #################
+
+          # count abstracts
+          row += datasource_ids.map do |datasource_id|
+            Datasource.by_id(datasource_id).import_items([id]).first&.abstract.to_s.empty? ? 0 : 1
+          end
+
+          # dataset
+          if dataset
+            dataset_item.abstract.to_s.empty? ? 0 : 1
           end
 
         end

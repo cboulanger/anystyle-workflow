@@ -17,7 +17,7 @@ module Datasource
     @entity_types = %w[work author institution venue]
     @headers = {
       'Accept' => 'application/json',
-      'User-Agent' => "requests mailto:#{@email}"
+      'User-Agent' => "ruby/HTTPX mailto:#{@email}"
     }
     @http = HTTPX.plugin(:follow_redirects, follow_insecure_redirects: true)
                  .plugin(:retries, retry_after: 2, max_retries: 10)
@@ -84,9 +84,7 @@ module Datasource
           url = "#{@base_api_url}/#{entity_type}s?filter=#{filter}&per-page=#{batch_size}&page=#{page}"
           if (data = Cache.load(url)).nil?
             puts " - Requesting #{url}" if verbose
-            HTTPX::Plugins.load_plugin(:follow_redirects)
-            http = HTTPX.plugin(:follow_redirects)
-            response = http.with(headers:).get(url, follow_insecure_redirects: true)
+            response = @http.get(url)
             raise_api_error(url, response) if response.error || response.status >= 400
             data = response.json
             Cache.save(url, data)

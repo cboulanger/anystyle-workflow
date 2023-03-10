@@ -26,9 +26,9 @@ module Format
         creator_names.map do |family, given|
           if initialize_given_names
             initials = Workflow::Utils.initialize_given_name(given || '')
-            [family, initials].reject(&:nil?).join(separator).strip || 'UNKNOWN'
+            [family, initials].reject(&:nil?).reject(&:empty?).join(separator).strip
           else
-            [family, given].reject(&:nil?).join(separator).strip || 'UNKNOWN'
+            [family, given].reject(&:nil?).reject(&:empty?).join(separator).strip
           end
         end
       end
@@ -41,13 +41,13 @@ module Format
 
       # @param [Format::CSL::Item] item
       def to_cr_au(item)
-        to_au(item, separator: ' ').first
+        (au = to_au(item, separator: ' ').first).empty? ? "NO_AUTHOR" : au
       end
 
       # @param [Format::CSL::Item] item
       def to_dt(item)
         case item.type
-        when Format::CSL::ARTICLE_JOURNAL
+        when ::Format::CSL::ARTICLE_JOURNAL
           'Article'
         else
           item.type
@@ -84,21 +84,20 @@ module Format
         cit.append(to_cr_au(item))
         cit.append(to_py(item))
         case item.type
-        when Format::CSL::ARTICLE_JOURNAL, Format::CSL::REPORT
+        when ::Format::CSL::ARTICLE_JOURNAL, ::Format::CSL::REPORT
           cit.append(to_ji(item))
           cit.append("V#{item.volume}") if item.volume
           cit.append("P#{item.page_first}") if item.page_first
-          cit.append("DOI #{to_di(item)}") if item.doi
-        when Format::CSL::CHAPTER
+        when ::Format::CSL::CHAPTER
           cit.append(to_ji(item) || to_iso4_title(item))
           cit.append("P#{item.page_first}") if item.page_first
-          cit.append("DOI #{to_di(item)}") if item.doi
-        when Format::CSL::BOOK, Format::CSL::COLLECTION
+        when ::Format::CSL::BOOK, ::Format::CSL::COLLECTION
           cit.append(to_iso4_title(item))
           cit.append("ISBN #{item.isbn.first}") unless item.isbn.empty?
         else
           cit.append(to_iso4_title(item))
         end
+        cit.append("DOI #{to_di(item)}") if item.doi
         cit.join(', ')
       end
 

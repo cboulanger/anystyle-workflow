@@ -1,41 +1,65 @@
+# frozen_string_literal: true
+
 require './lib/datasource/datasource'
 
 require 'serrano'
 require 'namae'
 require 'digest'
+require 'httpx'
+require 'erb'
 
 module Datasource
   class Crossref < ::Datasource::Datasource
-
     TYPES_MAP = {
       'journal-article' => Format::CSL::ARTICLE_JOURNAL
     }.freeze
 
+    HTTPX::Plugins.load_plugin(:follow_redirects)
+    HTTPX::Plugins.load_plugin(:retries)
+    HTTPX::Plugins.load_plugin(:rate_limiter)
+    @headers = {
+      'Accept' => 'application/json',
+      'User-Agent' => "ruby/HTTPX mailto:#{@email}"
+    }
+    @http = HTTPX.plugin(:follow_redirects, follow_insecure_redirects: true)
+                 .plugin(:retries, retry_after: 2, max_retries: 10)
+                 .plugin(:rate_limiter)
+                 .with(timeout: { operation_timeout: 60 })
+                 .with(headers: @headers)
+
+    Serrano.configuration do |config|
+      config.mailto = ENV['API_EMAIL']
+    end
+
     class << self
+      # @param [::Format::CSL::Item] item
+      # @return [::Format::CSL::Item | nil]
+      def lookup(item)
+        raise 'Argument must be Format::CSL::Item' unless item.is_a? ::Format::CSL::Item
 
-      def query(name, title, date)
-        raise 'must be reimplemented'
-        # name = Format::CSL.author_name_family(name)
-        # title_keywords = Format::CSL.title_keywords(title)
-        # args = {
-        #   query_author: name,
-        #   query_bibliographic: "#{title_keywords} #{date}",
-        #   select: 'author, title, issued, DOI'
-        # }
-        # puts "Querying crossref with #{JSON.pretty_generate(args)}" if verbose
-        response = Serrano.works(**args)
-        # puts"Response:#{JSON.pretty_generate(response)}" if verbose
-        # response
-      end
+        author, year, title = item.creator_year_title
+        cit_str = "#{author} (#{year}) #{title}, #{item.container_title}".strip
+        select = 'type,DOI,title,author,container-title,issued,page,volume,issue'
+        url = "http://api.crossref.org/works?query.bibliographic=#{ERB::Util.url_encode(cit_str)}&select=#{select}&rows=1"
+        if (data = Cache.load(url, prefix: '_cr-bib-')).nil?
+          puts "   - looking up '#{cit_str}'" if @verbose
+          response = @http.get(url)
+          raise response.error if response.error || response.status >= 400
 
-      def exists(name, title, date)
-        data = query(name, title, date)
-        raise "not implemented"
-      end
-
-      def lookup(name, title, date)
-        data = query(name, title, date)
-        import_items(data['message'].map { |item| item['DOI'] })
+          data = response.json.dig('message', 'items')&.first
+          Cache.save(url, data, prefix: '_cr-bib-')
+        elsif @verbose
+          puts "   - getting '#{cit_str}' from cache"
+        end
+        if data.nil?
+          item = nil
+          puts '   - no match was found' if @verbose
+        else
+          item = Item.new(data)
+          puts "   - found https://doi.org/#{item.doi}" if @verbose
+        end
+        item.custom.metadata_api_url = url
+        item
       end
 
       # @return [Array<Item>]
@@ -58,7 +82,7 @@ module Datasource
               retries += 1
               raise 'Too many timeouts' if retries > 3
 
-              STDERR.puts " - CrossRef: Connection problem, retrying in #{wait_time} seconds...".colorize(:red)
+              warn " - CrossRef: Connection problem, retrying in #{wait_time} seconds...".colorize(:red)
               sleep wait_time
               wait_time *= 2
             end
@@ -69,9 +93,7 @@ module Datasource
             return []
           end
           items = JSON.parse(response)
-          unless items.is_a? Array
-            items = [items]
-          end
+          items = [items] unless items.is_a? Array
           Cache.save(dois, items)
         elsif verbose
           puts " - CrossRef: Using cache for DOI #{dois.join(', ')}" if verbose
@@ -85,10 +107,9 @@ module Datasource
     end
 
     class Affiliation < Format::CSL::Affiliation
-
       def initialize(data, accessor_map: nil)
         super
-        self.x_affiliation_source = "crossref"
+        self.x_affiliation_source = 'crossref'
       end
 
       def name=(name)
@@ -97,7 +118,6 @@ module Datasource
     end
 
     class Creator < Format::CSL::Creator
-
       def name=(name)
         self.literal = name
       end
@@ -116,7 +136,6 @@ module Datasource
     end
 
     class Item < Format::CSL::Item
-
       ACCESSOR_MAP = {
         'page_first': 'first-page'
       }.freeze
@@ -135,20 +154,25 @@ module Datasource
 
       def type=(type)
         type = TYPES_MAP[type] || type
-        super
+        super(type)
       end
 
       def author=(authors)
         if authors.is_a? String
-          _author = Creator.new(({ literal: authors }))
-          _author.family, _author.given = _author.family_and_given
-          authors = [_author]
+          author_ = Creator.new(({ literal: authors }))
+          author_.family, author_.given = author_.family_and_given
+          authors = [author_]
         end
         super
       end
 
+      def title=(title)
+        title = title.join('. ') if title.is_a? Array
+        super(title)
+      end
+
       def year=(year)
-        self.issued = year.to_i if self.issued.nil? && year.to_i > 0
+        self.issued = year.to_i if issued.nil? && year.to_i.positive?
       end
 
       def article_title=(title)
@@ -160,7 +184,7 @@ module Datasource
       end
 
       def is_referenced_by_count=(count)
-        self.custom.times_cited = count
+        custom.times_cited = count
       end
 
       def reference=(references)
@@ -202,16 +226,17 @@ module Datasource
         self.container_title = title
       end
 
+      def container_title=(title)
+        title = (title.is_a?(Array) ? title.first : title).to_s
+        title.gsub!('&amp;', '&')
+        super(title)
+      end
+
       protected
 
       def creator_factory(data)
         Creator.new(data)
       end
-
     end
   end
-end
-
-Serrano.configuration do |config|
-  config.mailto = ENV['API_EMAIL']
 end

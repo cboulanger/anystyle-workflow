@@ -25,13 +25,15 @@ module Workflow
     # @!attribute [Array] remove_list An array of words that should be disregarded for auto-generating abstracts and keywords
     # @!attribute [Boolean] use_cache
     # @!attribute [Boolean] add_metadata_from_text
-    # @!attribute [Array<String>] policies
+    # @!attribute [Array<String>] policies Policies for merging, @see [Workflow::Dataset::MERGE_POLICIES]
+    # @!attribute [Boolean] reference_lookup Try to lookup references if they do not have a DOI
     Options = Struct.new(
       :generate_abstract,
       :text_dir,
       :stopword_files,
       :generate_keywords,
       :verbose,
+      :reference_lookup,
       :use_cache,
       :cache_file_prefix,
       :policies,
@@ -45,6 +47,7 @@ module Workflow
         super
         self.generate_abstract = true if generate_abstract.nil?
         self.generate_keywords = true if generate_keywords.nil?
+        self.reference_lookup = true if reference_lookup.nil?
         self.use_cache = true if use_cache.nil?
         self.abbreviate_titles = false if abbreviate_titles.nil?
         self.policies ||= [ADD_MISSING_ALL, ADD_UNVALIDATED, REMOVE_DUPLICATES, ADD_AFFILIATIONS]
@@ -53,7 +56,7 @@ module Workflow
         self.abbr_disamb_langs ||= %w[eng ger]
         raise "Invalid text_dir #{text_dir}" unless text_dir.nil? || Dir.exist?(text_dir)
         return unless stopword_files.is_a?(Array) &&
-          (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
+                      (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
 
         raise "The following stopword files do not exist or are not accessible: \n#{invalid.join("\n")}"
       end
@@ -86,7 +89,7 @@ module Workflow
     # @return  [Array<Format::CSL::Item>]
     attr_reader :items, :name
 
-    alias_method :to_a, :items
+    alias to_a items
 
     # @!attribute [r] length
     # @return [Integer]
@@ -144,6 +147,7 @@ module Workflow
             item = merge_and_validate(id, @datasources)
           rescue StandardError => e
             puts e.to_s.colorize(:red)
+            puts e.backtrace.join("\n").to_s.colorize(:red)
             next
           end
         end
@@ -162,6 +166,30 @@ module Workflow
         n = references&.length || 0
         num_refs += n
         progress_or_message " - Found #{n} references"
+
+        # get missing reference metadata from crossref
+        if @options.reference_lookup
+          item.x_references = references.map do |ref|
+            a1, y1 = ref.creator_year_title(downcase: true)
+            # try to match the reference only if it is a journal article
+            found_ref = (a1 != 'no_author') && ref.doi.to_s.empty? &&
+                        ref.type == ::Format::CSL::ARTICLE_JOURNAL &&
+                        ::Datasource::Crossref.lookup(ref)
+            if found_ref
+              a2, y2 = found_ref.creator_year_title(downcase: true)
+              if a1 == a2 && y1 == y2
+                puts '   - merging crossref metadata to reference'.colorize(:green) if @options.verbose
+                # save the validation data
+                found_ref.custom.validated_by = ref.custom.validated_by
+                ref = found_ref
+                add_journal_abbreviation(ref)
+              elsif @options.verbose
+                puts '   - crossref data does not match'.colorize(:yellow)
+              end
+            end
+            ref
+          end
+        end
 
         # iso4 abbreviations
         if item.type == Format::CSL::ARTICLE_JOURNAL
@@ -279,7 +307,6 @@ module Workflow
     # @return [Format::CSL::Item]
     # @param [Array<String>] datasource_ids
     def merge_and_validate(item_id, datasource_ids)
-
       raise 'Id currently must be a DOI' unless item_id.start_with? '10.'
 
       # get anystyle item (enriched with crossref metadata)
@@ -367,7 +394,10 @@ module Workflow
             end
             next if matched
 
-            next unless policies.include?(ADD_MISSING_ALL) || (policies.include?(ADD_MISSING_FREE) && datasource_id != 'wos')
+            # add vendor reference that we don't already have only if so instructed
+            unless policies.include?(ADD_MISSING_ALL) || (policies.include?(ADD_MISSING_FREE) && datasource_id != 'wos')
+              next
+            end
 
             # add missing type
             vendor_ref.type ||= Format::CSL::Item.guess_type(vendor_ref)
@@ -443,7 +473,6 @@ module Workflow
     def add_affiliations(item, vendor_item, vendor)
       item.creators.each do |creator|
         vendor_item.creators.each do |vendor_creator|
-
           # ignore if the family name does not match
           next if creator.family != vendor_creator.family
 

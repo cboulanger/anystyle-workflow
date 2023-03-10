@@ -59,9 +59,9 @@ module Format
 
     class Object < Model::Model
       # Initialize an object with values
-      def initialize(data, accessor_map: {})
+      def initialize(data, accessor_map: nil)
         super()
-        @_accessor_map = accessor_map
+        @_accessor_map = accessor_map || {}
         @_key_map = @_accessor_map.invert
         data.each do |k, v|
           method_name = "#{accessor_name(k)}=".to_sym
@@ -221,7 +221,7 @@ module Format
             [parse_family(l), parse_given(l)]
           end
         else
-          raise "Missing name data for #{JSON.dump(self)}"
+          ['NO_AUTHOR','']
         end
       end
 
@@ -412,10 +412,15 @@ module Format
 
       # custom
 
-      def custom=(hash)
-        raise 'custom must be a hash' unless hash.is_a?(Hash)
-
-        @custom = Custom.new(hash)
+      def custom=(custom_or_hash)
+        @custom = case custom_or_hash
+                  when Hash
+                    Custom.new(custom_or_hash)
+                  when Custom
+                    custom_or_hash
+                  else
+                    raise 'custom must be a Custom object or a hash'
+                  end
       end
 
       # @return [Custom]

@@ -42,15 +42,13 @@ HELP = \
          --from-(text|pdf) /to/text/dir'   Use either text or pdf as source - must be last argument
          [--limit 10]                      Maximum number of entries - for testing
 
-     stats                                 Generate a CSV file with data on the extraction results and on other
-                                           available metadata from vendors listed in 3-metadata/vendors.json
-         [--affiliations]                  Output statistics on author's affiliations in the data instead of 
-                                           on the number of references
+     stats [options] <type>                Generate a CSV file with data on the extraction results and on other
+                                           available metadata. Possible types are: reference, affiliation, abstract
         [--input-dir /path/to/dir]         Path to the directory containing the AnyStyle CSL-JSON files, defaults to the
                                            anystyle csl-json dir
         [--id-file /path/to/file]          Path to a file containing all ids (DOIs) as a newline-separated list
         [--fulltext-dir /path/to/dir]      Optional path to the directory containing the fulltext files, if statitics
-                                           on availability are to be generated
+                                           on availability of fulltext are to be included
         [--dataset <name>]                 Add values from the dataset with that name
 
 
@@ -189,6 +187,8 @@ if ARGV.include? 'stats'
   arg_name = '--limit'
   limit = ARGV[(ARGV.index(arg_name) + 1)].to_i if ARGV.include? arg_name
 
+  type = ARGV.last
+
   ids = if id_file
           raise "#{id_file} does not exist" unless File.exist? id_file
 
@@ -203,7 +203,7 @@ if ARGV.include? 'stats'
     ids,
     text_dir:,
     verbose: ARGV.include?('--verbose'),
-    type: ARGV.include?('--affiliations') ? 'affiliation' : 'reference',
+    type:,
     dataset:,
     limit:,
     outfile: out_path
