@@ -73,6 +73,7 @@ HELP = \
                                            be removed from the fulltext before generating
         [--ignore-author expr]             Author string or regexp (/.../) which causes the author to be ignored
         [--ignore-affiliation expr]        Affiliation string or regexp (/.../) which causes the author to be ignored
+        [--period 1900-2000]               Only include works from this period
         [--limit 10]                       Maximum number of files processed - for testing
         [--no-cache]                        Do not use cached data
 
@@ -87,6 +88,10 @@ HELP = \
          [--pretty]                          Make the output more human-readable (via indentation, comments, etc.)
          [--encoding]                        The encoding of the output file (defaults to utf-8)
          [--limit 10]                        Maximum number of entries - for testing
+         [--filter]                          A jq expression (https://stedolan.github.io/jq/manual) that filters
+                                             the csl-json data model items to a subset, i.e.  
+                                             map(select(.year > 1900))
+
 
      General parameters:
          --verbose                           Output additional information
@@ -278,7 +283,7 @@ if ARGV.include? 'check'
 end
 
 # ############################################################################################################
-# dataset
+# generate dataset
 # ############################################################################################################
 
 if ARGV.include? 'generate-dataset'
@@ -308,11 +313,16 @@ if ARGV.include? 'generate-dataset'
   arg_name = '--ignore-affiliation'
   affiliation_ignore_list = ARGV.select.with_index { |_, i| ARGV[i - 1] == arg_name }
 
+  arg_name = '--period'
+  period = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
+
   arg_name = '--limit'
   limit = ARGV[(ARGV.index(arg_name) + 1)].to_i if ARGV.include? arg_name
 
   arg_name = '--cache-prefix'
   cache_file_prefix = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
+
+  period = period.split("-").map(&:strip).map(&:to_i)
 
   options = Workflow::Dataset::Options.new(
     verbose: ARGV.include?('--verbose'),
@@ -321,7 +331,9 @@ if ARGV.include? 'generate-dataset'
     stopword_files:,
     authors_ignore_list:,
     affiliation_ignore_list:,
-    cache_file_prefix:
+    cache_file_prefix:,
+    ref_year_start: period[0],
+    ref_year_end:period[1]
   )
   if ARGV.include? '--debug'
     puts options
@@ -340,6 +352,10 @@ if ARGV.include? 'generate-dataset'
   dataset.save(dataset_name)
   puts "Saved #{dataset.length} items to dataset '#{dataset_name}'. You can now use export-dataset to export it to the desired format."
 end
+
+# ############################################################################################################
+# export dataset
+# ############################################################################################################
 
 if ARGV.include? 'export-dataset'
 
@@ -363,6 +379,9 @@ if ARGV.include? 'export-dataset'
   encoding = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
   encoding ||= 'utf-8'
 
+  arg_name = '--jq'
+  jq = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
+
   arg_name = '--limit'
   limit = ARGV[(ARGV.index(arg_name) + 1)].to_i if ARGV.include? arg_name
 
@@ -378,6 +397,6 @@ if ARGV.include? 'export-dataset'
                                                 verbose: ARGV.include?('--verbose'),
                                                 pretty: ARGV.include?('--pretty'),
                                                 encoding:)
-  dataset.export(exporter, limit:)
+  dataset.export(exporter, limit:, jq:)
 
 end

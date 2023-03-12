@@ -221,7 +221,7 @@ module Format
             [parse_family(l), parse_given(l)]
           end
         else
-          ['NO_AUTHOR','']
+          ['NO_AUTHOR', '']
         end
       end
 
@@ -537,13 +537,21 @@ module Format
       # return an array with author, year and title
       # @param [Boolean] downcase
       # @return [Array<String, Integer, String>]
-      def creator_year_title(downcase: false)
-        first_creator = creator_names.first&.first
-        if downcase
-          [first_creator&.downcase, year, title&.downcase]
-        else
-          [first_creator, year, title]
+      # @param [Boolean] normalize_nil return empty string or 0 instead of nil
+      def creator_year_title(downcase: false, normalize_nil: false)
+        c = creator_names.first&.first
+        y = year
+        t = title
+        if normalize_nil
+          c = c.to_s
+          y = y.to_i
+          t = t.to_s
         end
+        if downcase
+          c = c&.downcase
+          t = t&.downcase
+        end
+        [c, y, t]
       end
 
       # @param [Item] item

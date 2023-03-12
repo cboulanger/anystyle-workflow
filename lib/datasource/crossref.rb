@@ -24,7 +24,7 @@ module Datasource
     @http = HTTPX.plugin(:follow_redirects, follow_insecure_redirects: true)
                  .plugin(:retries, retry_after: 2, max_retries: 10)
                  .plugin(:rate_limiter)
-                 .with(timeout: { operation_timeout: 60 })
+                 .with(timeout: { operation_timeout: 120 })
                  .with(headers: @headers)
 
     Serrano.configuration do |config|
@@ -40,25 +40,34 @@ module Datasource
         author, year, title = item.creator_year_title
         cit_str = "#{author} (#{year}) #{title}, #{item.container_title}".strip
         select = 'type,DOI,title,author,container-title,issued,page,volume,issue'
+        # TO DO: use HTTPX semantics https://honeyryderchuck.gitlab.io/httpx/wiki/Make-Requests
         url = "http://api.crossref.org/works?query.bibliographic=#{ERB::Util.url_encode(cit_str)}&select=#{select}&rows=1"
         if (data = Cache.load(url, prefix: '_cr-bib-')).nil?
           puts "   - looking up '#{cit_str}'" if @verbose
-          response = @http.get(url)
-          raise response.error if response.error || response.status >= 400
+          begin
+            response = @http.get(url)
+            raise response.error if response.error || response.status >= 400
 
-          data = response.json.dig('message', 'items')&.first
-          Cache.save(url, data, prefix: '_cr-bib-')
+            data = response.json.dig('message', 'items')&.first
+            Cache.save(url, data, prefix: '_cr-bib-')
+          rescue StandardError => e
+            puts
+            puts "Error:".colorize(:red)
+            puts e.to_s
+            puts
+            data = nil
+          end
         elsif @verbose
           puts "   - getting '#{cit_str}' from cache"
         end
-        if data.nil?
+        if data.to_s.empty?
           item = nil
           puts '   - no match was found' if @verbose
         else
           item = Item.new(data)
+          item.custom.metadata_api_url = url
           puts "   - found https://doi.org/#{item.doi}" if @verbose
         end
-        item.custom.metadata_api_url = url
         item
       end
 

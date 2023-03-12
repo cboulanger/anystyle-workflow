@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+require 'jq/extend'
 
 module Workflow
   class Dataset
@@ -27,6 +28,8 @@ module Workflow
     # @!attribute [Boolean] add_metadata_from_text
     # @!attribute [Array<String>] policies Policies for merging, @see [Workflow::Dataset::MERGE_POLICIES]
     # @!attribute [Boolean] reference_lookup Try to lookup references if they do not have a DOI
+    # @!attribute [Integer] ref_year_start The first year for which to include references, defaults to 1700
+    # # @!attribute [Integer] ref_year_end The last year for which to include references, defaults to current year plus 2
     Options = Struct.new(
       :generate_abstract,
       :text_dir,
@@ -41,6 +44,8 @@ module Workflow
       :affiliation_ignore_list,
       :abbr_disamb_langs,
       :abbreviate_titles,
+      :ref_year_start,
+      :ref_year_end,
       keyword_init: true
     ) do
       def initialize(*)
@@ -54,9 +59,11 @@ module Workflow
         self.authors_ignore_list ||= []
         self.affiliation_ignore_list ||= []
         self.abbr_disamb_langs ||= %w[eng ger]
+        self.ref_year_start = 1700 if ref_year_start.to_i == 0
+        self.ref_year_end = Date.today.year + 2 if ref_year_end.to_i == 0
         raise "Invalid text_dir #{text_dir}" unless text_dir.nil? || Dir.exist?(text_dir)
         return unless stopword_files.is_a?(Array) &&
-                      (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
+          (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
 
         raise "The following stopword files do not exist or are not accessible: \n#{invalid.join("\n")}"
       end
@@ -111,7 +118,7 @@ module Workflow
     end
 
     # @param [Array<String>] ids An array of ids that identify the references, such as a DOI, which can be used
-    #   to call #merge_and_validate
+    #   to call #merge_and_validate_refs
     # @param [Integer] limit Limits the number of generated items (mainly for test purposes)
     def import(ids, datasources: nil, limit: nil)
       raise 'Argument must be an non-empty array of string ids' \
@@ -131,7 +138,7 @@ module Workflow
 
       # iterate over ids
       @ids.each do |id|
-        progress_or_message "Processing #{id}\n#{'=' * 80}".colorize(:blue), increment: true
+        progress_or_message "Processing #{id}\n#{'=' * 80}".colorize(:blue), increment: true, title: "Processing #{id}"
 
         if @options.use_cache && (item_data = items_cache[id] || items_cache[Utils.to_filename(id)])
           # use the cached item if exists
@@ -144,7 +151,7 @@ module Workflow
           progress_or_message "no cache for #{id}".colorize(:yellow)
           begin
             # merge available data according to the policies
-            item = merge_and_validate(id, @datasources)
+            item = merge_and_validate_refs(id, @datasources)
           rescue StandardError => e
             puts e.to_s.colorize(:red)
             puts e.backtrace.join("\n").to_s.colorize(:red)
@@ -169,12 +176,14 @@ module Workflow
 
         # get missing reference metadata from crossref
         if @options.reference_lookup
-          item.x_references = references.map do |ref|
+          item.x_references = references.map.with_index do |ref, i|
+            progress_or_message title:"Verifying #{i+1}/#{n} references..."
             a1, y1 = ref.creator_year_title(downcase: true)
             # try to match the reference only if it is a journal article
             found_ref = (a1 != 'no_author') && ref.doi.to_s.empty? &&
-                        ref.type == ::Format::CSL::ARTICLE_JOURNAL &&
-                        ::Datasource::Crossref.lookup(ref)
+              ref.type == ::Format::CSL::ARTICLE_JOURNAL &&
+              #ref.container_title.include?('law') && # everything else just takes too long
+              ::Datasource::Crossref.lookup(ref)
             if found_ref
               a2, y2 = found_ref.creator_year_title(downcase: true)
               if a1 == a2 && y1 == y2
@@ -258,9 +267,23 @@ module Workflow
     # Export the dataset using the given exporter class
     # @param [Export::Exporter] exporter
     # @param [Integer] limit
-    def export(exporter, limit: nil)
+    # @param [String] jq A jq expression that filters the items, such as '.year > 1990'
+    def export(exporter, limit: nil, jq: nil)
       raise 'Argument must be an Export::Exporter subclass' unless exporter.is_a? Export::Exporter
 
+      # apply jq filter to items
+      unless jq.nil?
+        # shortcuts
+        jq = "map(#{jq})[]".gsub(/\.year/, '.issued."date-parts"[0][0]')
+        # apply filter
+        puts "Applying filter..." if @options.verbose
+        @items = @items
+                   .map(&:to_h)
+                   .jq(jq)
+                   .map {|data| ::Format::CSL::Item.new(data)}
+      end
+
+      # export
       counter = 0
       total = [@items.length, limit || @items.length].min
       progress_or_message("Exporting #{total} items to #{exporter.name}...", total:)
@@ -306,7 +329,7 @@ module Workflow
     # @param [String] item_id
     # @return [Format::CSL::Item]
     # @param [Array<String>] datasource_ids
-    def merge_and_validate(item_id, datasource_ids)
+    def merge_and_validate_refs(item_id, datasource_ids)
       raise 'Id currently must be a DOI' unless item_id.start_with? '10.'
 
       # get anystyle item (enriched with crossref metadata)
@@ -462,7 +485,10 @@ module Workflow
         puts " - removed #{num_removed} duplicate references" if @options.verbose && num_removed.positive?
       end
 
-      item.x_references = validated_references
+      # add references if they are in the configured period
+      item.x_references = validated_references.reject do |item|
+        item.year < @options.ref_year_start || item.year > @options.ref_year_end
+      end
       # return result
       item
     end
@@ -561,16 +587,23 @@ module Workflow
 
     private
 
-    def progress_or_message(message = nil, increment: false, total: 0, finish: false)
+    def progress_or_message(message = nil, increment: false, total: 0, finish: false, progress: nil, title:nil)
       if @options.verbose
         puts message if message
-      elsif @progressbar.nil?
-        @progressbar = ProgressBar.create(message:, total:, **::Workflow::Config.progress_defaults)
-      elsif increment
-        @progressbar.increment
-      elsif finish
-        @progressbar.finish
-        @progressbar = nil
+      else
+        if @progressbar.nil?
+          @progressbar = ProgressBar.create(message:, total:, **::Workflow::Config.progress_defaults)
+        elsif title.is_a? String
+          @progressbar.title = title
+        end
+        if increment
+          @progressbar.increment
+        elsif progress.is_a? Integer
+          @progressbar.progress = progress
+        elsif finish
+          @progressbar.finish
+          @progressbar = nil
+        end
       end
     end
   end

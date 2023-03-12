@@ -59,6 +59,7 @@ GEM
       little-plugger (~> 1.1)
       multi_json (~> 1.14)
     matrix (0.4.2)
+    mini_portile2 (2.8.1)
     minitest (5.17.0)
     multi_json (1.15.0)
     namae (1.1.1)
@@ -95,6 +96,9 @@ GEM
       unicode-display_width (>= 2.4.0, < 3.0)
     rubocop-ast (1.26.0)
       parser (>= 3.2.1.0)
+    ruby-jq (0.2.1)
+      mini_portile2 (>= 2.2.0)
+      multi_json
     ruby-progressbar (1.11.0)
     ruby2_keywords (0.0.5)
     sanitize (6.0.1)
@@ -145,6 +149,7 @@ DEPENDENCIES
   pycall (~> 1.4)
   require_all (~> 3.0)
   rubocop
+  ruby-jq
   ruby-progressbar (~> 1.11)
   scylla (~> 1.2)
   serrano
