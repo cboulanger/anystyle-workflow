@@ -1,5 +1,4 @@
 # frozen_string_literal: true
-require 'jq/extend'
 
 module Workflow
   class Dataset
@@ -59,13 +58,22 @@ module Workflow
         self.authors_ignore_list ||= []
         self.affiliation_ignore_list ||= []
         self.abbr_disamb_langs ||= %w[eng ger]
-        self.ref_year_start = 1700 if ref_year_start.to_i == 0
-        self.ref_year_end = Date.today.year + 2 if ref_year_end.to_i == 0
+        self.ref_year_start = 1700 if ref_year_start.to_i.zero?
+        self.ref_year_end = Date.today.year + 2 if ref_year_end.to_i.zero?
         raise "Invalid text_dir #{text_dir}" unless text_dir.nil? || Dir.exist?(text_dir)
         return unless stopword_files.is_a?(Array) &&
           (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
 
         raise "The following stopword files do not exist or are not accessible: \n#{invalid.join("\n")}"
+      end
+    end
+
+    # Preprocessing and postprocessing instructions
+    Instruction = Struct.new(:type, :command, :message, keyword_init: true) do
+      def initialize(*)
+        super
+        raise 'Instruction requires a type' if type.to_s.empty?
+        raise 'Instruction requires a command' if command.to_s.empty?
       end
     end
 
@@ -127,8 +135,6 @@ module Workflow
       @ids = ids
       @datasources = datasources || Workflow::Utils.datasource_ids
 
-      # use cache if it exists to speed up process
-      items_cache = (@options.use_cache && Cache.load(@ids, prefix: @options.cache_file_prefix)) || {}
       # @type [Array<Format::CSL::Item>]
       num_refs = 0
       counter = 0
@@ -138,13 +144,16 @@ module Workflow
 
       # iterate over ids
       @ids.each do |id|
-        progress_or_message "Processing #{id}\n#{'=' * 80}".colorize(:blue), increment: true, title: "Processing #{id}"
+        counter += 1
+        progress_or_message "Processing #{id} (#{counter + 1}/#{total})\n#{'=' * 80}".colorize(:blue), increment: true, title: "Processing #{id}"
 
-        if @options.use_cache && (item_data = items_cache[id] || items_cache[Utils.to_filename(id)])
+        if @options.use_cache &&
+          (item_data = Cache.load(id, prefix: 'dataset-item-')) # || items_cache[id] || items_cache[Utils.to_filename(id)]
           # use the cached item if exists
           item = Format::CSL::Item.new(item_data)
           add_item(item)
           progress_or_message ' - Using cached data'
+          Cache.save(id, item.to_h(compact: true), prefix: 'dataset-item-') # todo remove this
           next
         else
           # get the item merged from the different datasources
@@ -177,26 +186,9 @@ module Workflow
         # get missing reference metadata from crossref
         if @options.reference_lookup
           item.x_references = references.map.with_index do |ref, i|
-            progress_or_message title:"Verifying #{i+1}/#{n} references..."
-            a1, y1 = ref.creator_year_title(downcase: true)
-            # try to match the reference only if it is a journal article
-            found_ref = (a1 != 'no_author') && ref.doi.to_s.empty? &&
-              ref.type == ::Format::CSL::ARTICLE_JOURNAL &&
-              #ref.container_title.include?('law') && # everything else just takes too long
-              ::Datasource::Crossref.lookup(ref)
-            if found_ref
-              a2, y2 = found_ref.creator_year_title(downcase: true)
-              if a1 == a2 && y1 == y2
-                puts '   - merging crossref metadata to reference'.colorize(:green) if @options.verbose
-                # save the validation data
-                found_ref.custom.validated_by = ref.custom.validated_by
-                ref = found_ref
-                add_journal_abbreviation(ref)
-              elsif @options.verbose
-                puts '   - crossref data does not match'.colorize(:yellow)
-              end
-            end
-            ref
+            progress_or_message "   - verifying reference #{i + 1}/#{n}",
+                                title: "Verifying reference #{i + 1}/#{n}"
+            reconcile ref
           end
         end
 
@@ -213,16 +205,45 @@ module Workflow
           add_reference_keywords(item)
         end
 
+        # save and cache item
         add_item(item)
-        items_cache[id] = item.to_h
-        counter += 1
-        # save cache every 10 items
-        Cache.save(@ids, items_cache, prefix: @options.cache_file_prefix) if (counter % 10).zero?
-        # respect limit
-        break if limit && counter >= limit
+        Cache.save(id, item.to_h(compact: true), prefix: 'dataset-item-')
+
+        limit_reached = limit && counter >= limit
+        break if limit_reached
       end
       progress_or_message finish: true
       items
+    end
+
+    def reconcile(ref)
+      a1, y1 = ref.creator_year_title(downcase: true)
+      if ref.doi
+        puts "   - DOI exists: https://doi.org/#{ref.doi}".colorize(:green) if @options.verbose
+      elsif a1.to_s.empty? || a1 == 'no_author'
+        puts '   - insufficient data'.colorize(:yellow) if @options.verbose
+      else
+        # try to match the reference only if it is a journal article
+        found_ref = case ref.type
+                    when ::Format::CSL::ARTICLE_JOURNAL
+                      ::Datasource::Crossref.lookup(ref)
+                    else
+                      puts "   - no reconciliation service available for type '#{ref.type}'" if @options.verbose
+                    end
+        if found_ref
+          a2, y2 = found_ref.creator_year_title(downcase: true)
+          if a1 == a2 && y1 == y2
+            puts '   - merging crossref metadata to reference'.colorize(:green) if @options.verbose
+            # save the validation data
+            found_ref.custom.validated_by = ref.custom.validated_by
+            ref = found_ref
+            add_journal_abbreviation(ref)
+          elsif @options.verbose
+            puts '   - crossref data does not match'.colorize(:yellow)
+          end
+        end
+      end
+      ref
     end
 
     def build_indexes
@@ -268,33 +289,47 @@ module Workflow
     # @param [Export::Exporter] exporter
     # @param [Integer] limit
     # @param [String] jq A jq expression that filters the items, such as '.year > 1990'
-    def export(exporter, limit: nil, jq: nil)
-      raise 'Argument must be an Export::Exporter subclass' unless exporter.is_a? Export::Exporter
+    # @param [Array<Instruction>] preprocess An optional list of Instruction objects containing information
+    #   on how to preprocess the data to be exported, to be handled by the exporter.
+    # @param [Array<Instruction>] postprocess An optional list of Instruction objects containing information
+    #   on how to postprocess the data to be exported, to be handled by the exporter.
+    def export(exporter, limit: nil, preprocess: [], postprocess: [])
+      raise 'First argument must be an Export::Exporter subclass' unless exporter.is_a? ::Export::Exporter
+      raise 'Pre/postprocess arguments must be arrays of Workflow::Dataset::Instruction instances' \
+        unless (preprocess.to_a + postprocess.to_a).reject { |i| i.is_a? Instruction }.empty?
 
-      # apply jq filter to items
-      unless jq.nil?
-        # shortcuts
-        jq = "map(#{jq})[]".gsub(/\.year/, '.issued."date-parts"[0][0]')
-        # apply filter
-        puts "Applying filter..." if @options.verbose
-        @items = @items
-                   .map(&:to_h)
-                   .jq(jq)
-                   .map {|data| ::Format::CSL::Item.new(data)}
+      items = @items
+
+      # preprocessing
+      preprocess.to_a.each do |instruction|
+        msg = instruction.message || "Preprocessing"
+        progress_or_message " - #{msg}", title: msg
+        items = exporter.preprocess items, instruction
       end
 
-      # export
+      # start
       counter = 0
-      total = [@items.length, limit || @items.length].min
+      total = [items.length, limit || items.length].min
       progress_or_message("Exporting #{total} items to #{exporter.name}...", total:)
       exporter.start
-      @items.each do |item|
+
+      # export all items
+      items.each do |item|
         counter += 1
         creator, year = item.creator_year_title
         progress_or_message " - Processing #{creator} (#{year}) #{counter}/#{total}", increment: true
         exporter.add_item item
         break if counter >= total
       end
+
+      # postprocessing
+      postprocess.to_a.each do |instruction|
+        msg = instruction.message || "Postprocessing"
+        progress_or_message " - #{msg}", title: msg
+        exporter.postprocess instruction
+      end
+
+      # finishing
       exporter.finish
       progress_or_message finish: true
     end
@@ -487,7 +522,7 @@ module Workflow
 
       # add references if they are in the configured period
       item.x_references = validated_references.reject do |item|
-        item.year < @options.ref_year_start || item.year > @options.ref_year_end
+        item.year.to_i < @options.ref_year_start || item.year.to_i > @options.ref_year_end
       end
       # return result
       item
@@ -587,14 +622,14 @@ module Workflow
 
     private
 
-    def progress_or_message(message = nil, increment: false, total: 0, finish: false, progress: nil, title:nil)
+    def progress_or_message(message = nil, increment: false, total: 0, finish: false, progress: nil, title: nil)
       if @options.verbose
         puts message if message
       else
         if @progressbar.nil?
           @progressbar = ProgressBar.create(message:, total:, **::Workflow::Config.progress_defaults)
         elsif title.is_a? String
-          @progressbar.title = title
+          @progressbar.title = Utils.truncate(title, pad_char: ' ')
         end
         if increment
           @progressbar.increment

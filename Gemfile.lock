@@ -149,7 +149,7 @@ DEPENDENCIES
   pycall (~> 1.4)
   require_all (~> 3.0)
   rubocop
-  ruby-jq
+  ruby-jq (~> 0.2.1)
   ruby-progressbar (~> 1.11)
   scylla (~> 1.2)
   serrano

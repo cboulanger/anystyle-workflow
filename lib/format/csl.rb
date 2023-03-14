@@ -160,9 +160,9 @@ module Format
       end
 
       # Returns the date's year as an integer, if available, otherwise nil
-      # @return [Integer]
+      # @return [Integer, nil]
       def to_year
-        (@date_parts&.first&.first || @raw&.scan(/\d{4}/)&.first)&.to_i
+        @date_parts&.first&.first || @raw&.scan(/\d{4}/)&.first
       end
     end
 
@@ -348,7 +348,8 @@ module Format
       # @!attribute id
       # @return [String]
       def id
-        doi || isbn&.first || citation_key || creator_year_title.join('_').gsub(%r{[^_\p{L}\p{N}]}, '')[..30]
+        doi || isbn&.first || citation_key ||
+          creator_year_title(downcase: true).compact.join('_').gsub(%r{[^_\p{L}\p{N}]}, '')[..30]
       end
 
       def author=(authors)

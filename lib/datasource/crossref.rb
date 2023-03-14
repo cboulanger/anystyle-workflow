@@ -14,21 +14,23 @@ module Datasource
       'journal-article' => Format::CSL::ARTICLE_JOURNAL
     }.freeze
 
+    @email ||= ENV['API_EMAIL'] || raise('Email is required for CrossRef lookups')
+
     HTTPX::Plugins.load_plugin(:follow_redirects)
     HTTPX::Plugins.load_plugin(:retries)
     HTTPX::Plugins.load_plugin(:rate_limiter)
     @headers = {
       'Accept' => 'application/json',
-      'User-Agent' => "ruby/HTTPX mailto:#{@email}"
+      'User-Agent' => "https://github.com/cboulanger/anystyle-workflow mailto:#{@email}"
     }
     @http = HTTPX.plugin(:follow_redirects, follow_insecure_redirects: true)
-                 .plugin(:retries, retry_after: 2, max_retries: 10)
+                 .plugin(:retries, retry_after: 2, max_retries: 3)
                  .plugin(:rate_limiter)
-                 .with(timeout: { operation_timeout: 120 })
+                 .with(timeout: { operation_timeout: 30 })
                  .with(headers: @headers)
 
     Serrano.configuration do |config|
-      config.mailto = ENV['API_EMAIL']
+      config.mailto = @email
     end
 
     class << self
@@ -38,10 +40,15 @@ module Datasource
         raise 'Argument must be Format::CSL::Item' unless item.is_a? ::Format::CSL::Item
 
         author, year, title = item.creator_year_title
-        cit_str = "#{author} (#{year}) #{title}, #{item.container_title}".strip
+        container_title = item.container_title
+        if title == container_title
+          # this is propably the case when a citation leaves out the title and gives the journal name only
+          title = ''
+        end
+        cit_str = "#{author} (#{year}) #{title}, #{container_title}".strip
         select = 'type,DOI,title,author,container-title,issued,page,volume,issue'
         # TO DO: use HTTPX semantics https://honeyryderchuck.gitlab.io/httpx/wiki/Make-Requests
-        url = "http://api.crossref.org/works?query.bibliographic=#{ERB::Util.url_encode(cit_str)}&select=#{select}&rows=1"
+        url = "https://api.crossref.org/works?query.bibliographic=#{ERB::Util.url_encode(cit_str)}&select=#{select}&rows=1"
         if (data = Cache.load(url, prefix: '_cr-bib-')).nil?
           puts "   - looking up '#{cit_str}'" if @verbose
           begin

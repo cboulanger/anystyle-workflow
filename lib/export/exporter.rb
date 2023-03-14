@@ -39,6 +39,25 @@ module Export
       raise 'Must be implemented by subclass'
     end
 
+    # @param [Object] items
+    # @param [Workflow::Dataset::Instruction] instruction
+    def preprocess(items, instruction)
+      # apply jq filter to items
+      case instruction.type
+      when 'jq'
+        require 'jq/extend'
+        # shortcuts
+        jq = "map(#{instruction.command})[]"
+               .gsub(/\.year/, '.issued."date-parts"[0][0]')
+        # apply filter
+        items.map(&:to_h)
+             .jq(jq)
+             .map { |data| ::Format::CSL::Item.new(data) }
+      else
+        raise "Unknown instruction type #{instruction.type}"
+      end
+    end
+
     def start; end
 
     # @param [Format::CSL::Item] item
@@ -47,5 +66,10 @@ module Export
     end
 
     def finish; end
+
+    # needs to be explicitly called by finish if postprocessing is supported
+    def postprocess(*)
+      raise "No postprocessing method implemented"
+    end
   end
 end

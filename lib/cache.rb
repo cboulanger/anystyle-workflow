@@ -37,15 +37,19 @@ class Cache
     p = cache_path(identifier, use_literal:, prefix:, mode:)
     return unless File.exist? p
 
-    # puts "Loading cache from #{p}"
     File.open(p) do |f|
-      case mode
-      when MODE_JSON
-        JSON.load_file f
-      when MODE_MARSHAL
-        Marshal.load f.read
-      else
-        raise "Invalid mode"
+      begin
+        case mode
+        when MODE_JSON
+          JSON.load_file f
+        when MODE_MARSHAL
+          Marshal.load f.read
+        else
+          raise "Invalid mode"
+        end
+      rescue JSON::ParserError => e
+        puts "Could not load cached data from '#{p}': #{e.to_s}".colorize(:red)
+        nil
       end
     end
   end

@@ -43,6 +43,15 @@ module Workflow
         text.split(' ').map { |w| w.match(/^[\p{Lu}\p{P}]+$/) ? w.capitalize : w }.join(' ')
       end
 
+      def truncate(s, length: 30, ellipsis: '...', pad_char: nil)
+        if s.length > length
+          s.to_s[0..length].gsub(/[^\w]\w+\s*$/, ellipsis)
+        else
+          pad_char.nil? ? s : s.rjust(length+1, pad_char)
+        end
+      end
+
+
       def initialize_given_name(given_name)
         given_name.scan(/\p{L}+/)&.map { |n| n[0] }&.join('')
       end
