@@ -72,8 +72,9 @@ module Datasource
           puts '   - no match was found' if @verbose
         else
           item = Item.new(data)
+          url = "https://doi.org/#{item.doi}"
           item.custom.metadata_api_url = url
-          puts "   - found https://doi.org/#{item.doi}" if @verbose
+          puts "   - found #{url}" if @verbose
         end
         item
       end

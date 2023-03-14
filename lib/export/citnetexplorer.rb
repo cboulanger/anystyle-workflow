@@ -3,17 +3,22 @@ require 'csv'
 
 module Export
   class CitnetExplorer < Exporter
+    # @return [String]
+    def self.id
+      'citnetexplorer'
+    end
 
-    def initialize(outfile = nil, compact: nil, encoding: nil, pretty: nil, verbose: nil)
+    # @return [String]
+    def self.name
+      'CitnetExplorer CSV files exporter'
+    end
+
+    def initialize(target: nil, compact: nil, encoding: nil, pretty: nil, verbose: nil)
       super
       # ignore any other encoding since this is the only encoding the software understands
       @encoding = "ISO-8859-1"
       @pub_header = %w[authors title source year doi cit_score incomplete_record]
       @cit_header = %w[citing_pub_index cited_pub_index]
-    end
-
-    def name
-      'CitnetExplorer CSV files exporter'
     end
 
     def start
@@ -48,8 +53,8 @@ module Export
 
     def finish
       [
-        ["#{@outfile}.pub.csv", @pub_header, @publications],
-        ["#{@outfile}.cit.csv", @cit_header, @citations]
+        ["#{@target}.pub.csv", @pub_header, @publications],
+        ["#{@target}.cit.csv", @cit_header, @citations]
       ].each do |file, header, data|
         csv_str = CSV.generate(col_sep: "\t") do |csv|
           csv << header

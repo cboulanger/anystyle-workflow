@@ -224,11 +224,11 @@ module Workflow
         puts '   - insufficient data'.colorize(:yellow) if @options.verbose
       else
         # try to match the reference only if it is a journal article
-        found_ref = case ref.type
+        found_ref = case ref.id
                     when ::Format::CSL::ARTICLE_JOURNAL
                       ::Datasource::Crossref.lookup(ref)
                     else
-                      puts "   - no reconciliation service available for type '#{ref.type}'" if @options.verbose
+                      puts "   - no reconciliation service available for type '#{ref.id}'" if @options.verbose
                     end
         if found_ref
           a2, y2 = found_ref.creator_year_title(downcase: true)
@@ -299,25 +299,23 @@ module Workflow
         unless (preprocess.to_a + postprocess.to_a).reject { |i| i.is_a? Instruction }.empty?
 
       items = @items
+      counter = 0
+      total = [items.length, limit || items.length].min
+      progress_or_message("Exporting #{total} items to #{exporter.class.name}...", total:)
 
       # preprocessing
       preprocess.to_a.each do |instruction|
-        msg = instruction.message || "Preprocessing"
-        progress_or_message " - #{msg}", title: msg
+        msg = instruction.message || 'Preprocessing'
+        progress_or_message " - #{msg}", title: msg, progress: 0
         items = exporter.preprocess items, instruction
       end
 
-      # start
-      counter = 0
-      total = [items.length, limit || items.length].min
-      progress_or_message("Exporting #{total} items to #{exporter.name}...", total:)
-      exporter.start
-
       # export all items
+      exporter.start
       items.each do |item|
         counter += 1
         creator, year = item.creator_year_title
-        progress_or_message " - Processing #{creator} (#{year}) #{counter}/#{total}", increment: true
+        progress_or_message " - Processing #{creator} (#{year}) #{counter}/#{total}", title: 'Exporting', increment: true
         exporter.add_item item
         break if counter >= total
       end
@@ -627,7 +625,7 @@ module Workflow
         puts message if message
       else
         if @progressbar.nil?
-          @progressbar = ProgressBar.create(message:, total:, **::Workflow::Config.progress_defaults)
+          @progressbar = ProgressBar.create(title:, total:, **::Workflow::Config.progress_defaults)
         elsif title.is_a? String
           @progressbar.title = Utils.truncate(title, pad_char: ' ')
         end

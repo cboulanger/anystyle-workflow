@@ -1,14 +1,25 @@
 module Export
   class WebOfScience < Exporter
 
-    def name
+    # @return [String]
+    def self.id
+      'wos'
+    end
+
+    # @return [String]
+    def self.name
       'Web of Science/ISI format exporter'
+    end
+
+    # @return [String]
+    def self.extension
+      'txt'
     end
 
     def start
       header = Format::Wos.header
       header.encode!(@encoding, invalid: :replace, undef: :replace) if @encoding != 'utf-8'
-      File.write(@outfile, header, encoding: @encoding)
+      File.write(@target, header, encoding: @encoding)
     end
 
     # @param [Format::CSL::Item] item
@@ -26,7 +37,7 @@ module Export
       end
       text = "#{records.join("\n")}\nER\n\n"
       text = text.encode(@encoding, invalid: :replace, undef: :replace) if @encoding != 'utf-8'
-      File.write(@outfile, text, 0, encoding: @encoding, mode: 'ab')
+      File.write(@target, text, 0, encoding: @encoding, mode: 'ab')
     end
   end
 end

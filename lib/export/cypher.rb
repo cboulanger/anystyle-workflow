@@ -4,7 +4,14 @@ require './lib/export/exporter'
 
 module Export
   class Cypher < Exporter
-    def name
+
+    # @return [String]
+    def self.id
+      'cypher'
+    end
+
+    # @return [String]
+    def self.name
       'Cypher exporter'
     end
 
@@ -20,7 +27,7 @@ module Export
     end
 
     def finish
-      File.write(@outfile, @data.join("\n"), encoding: @encoding)
+      File.write(@target, @data.join("\n"), encoding: @encoding)
     end
   end
 end

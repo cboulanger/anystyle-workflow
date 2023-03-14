@@ -12,3 +12,8 @@ dependencies with `pip install -r pylib/requirements.txt`
 
 Here is a gist that installs the python and ruby versions used:
 https://gist.github.com/cboulanger/f358273bda7ca330aa77d22f656b0750
+
+Todo:
+- use proper CLI gem
+- move Format::CSL to Model::CSL
+- 

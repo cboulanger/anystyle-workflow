@@ -3,8 +3,19 @@ require './lib/export/exporter'
 module Export
   class CSL_JSON < Exporter
 
-    def name
+    # @return [String]
+    def self.id
+      'csl-json'
+    end
+
+    # @return [String]
+    def self.name
       'CSL-JSON exporter'
+    end
+
+    # @return [String]
+    def self.extension
+      'json'
     end
 
     def start
@@ -17,7 +28,7 @@ module Export
     end
 
     def finish
-      File.write(@outfile, JSON.pretty_generate(@data), encoding: @encoding)
+      File.write(@target, JSON.pretty_generate(@data), encoding: @encoding)
     end
   end
 end
