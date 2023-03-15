@@ -4,6 +4,8 @@ module Workflow
   class Dataset
     include ::Utils::NLP
 
+    class NoDataError < StandardError; end
+
     MERGE_POLICIES = [
       # add all missing references found in the vendor data
       ADD_MISSING_ALL = 'add_missing_all',
@@ -62,7 +64,7 @@ module Workflow
         self.ref_year_end = Date.today.year + 2 if ref_year_end.to_i.zero?
         raise "Invalid text_dir #{text_dir}" unless text_dir.nil? || Dir.exist?(text_dir)
         return unless stopword_files.is_a?(Array) &&
-                      (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
+          (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
 
         raise "The following stopword files do not exist or are not accessible: \n#{invalid.join("\n")}"
       end
@@ -146,10 +148,10 @@ module Workflow
       @ids.each do |id|
         counter += 1
         progress_or_message "Processing #{id} (#{counter + 1}/#{total})\n#{'=' * 80}".colorize(:blue), increment: true,
-                                                                                                       title: "Processing #{id}"
+                            title: "Processing #{id}"
 
         if @options.use_cache &&
-           (item_data = Cache.load(id, prefix: 'dataset-item-'))
+          (item_data = Cache.load(id, prefix: 'dataset-item-'))
           # use the cached item if exists
           item = Format::CSL::Item.new(item_data)
           add_item(item)
@@ -161,6 +163,9 @@ module Workflow
           begin
             # merge available data according to the policies
             item = merge_and_validate_refs(id, @datasources)
+          rescue NoDataError => e
+            puts e.to_s.colorize(:red)
+            next
           rescue StandardError => e
             puts e.to_s.colorize(:red)
             puts e.backtrace.join("\n").to_s.colorize(:red)
@@ -224,11 +229,11 @@ module Workflow
         puts '   - insufficient data'.colorize(:yellow) if @options.verbose
       else
         # try to match the reference only if it is a journal article
-        found_ref = case ref.id
+        found_ref = case ref.type
                     when ::Format::CSL::ARTICLE_JOURNAL
                       ::Datasource::Crossref.lookup(ref)
                     else
-                      puts "   - no reconciliation service available for type '#{ref.id}'" if @options.verbose
+                      puts "   - no reconciliation service available for type '#{ref.type}'" if @options.verbose
                     end
         if found_ref
           a2, y2 = found_ref.creator_year_title(downcase: true)
@@ -370,7 +375,7 @@ module Workflow
       # @type [Item]
       item = Datasource::Anystyle.import_items([item_id]).first
 
-      raise "No data available for ID #{item_id}" if item.nil?
+      raise NoDataError, "No AnyStyle data available for ID #{item_id}" if item.nil?
 
       policies = @options.policies
 
@@ -408,7 +413,7 @@ module Workflow
           if @options.verbose && vendor_refs.length.positive? && @options.verbose
             puts " - #{datasource_id}: added #{vendor_refs.length} references"
           end
-        elsif item.x_references.length.positive?
+        elsif item.x_references.to_a.length.positive?
           # match each anystyle reference against all vendor references since we cannot be sure they are in the same order
           # this can certainly be optimized but is good enough for now
           vendor_refs.each do |vendor_ref|

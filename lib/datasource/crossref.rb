@@ -150,6 +150,11 @@ module Datasource
       def affiliation=(affiliation)
         self.x_affiliations = affiliation.map { |a| Affiliation.new({ 'literal': a }) }
       end
+
+      def title=(_) end
+      def nick=(_) end
+
+      def appellation=(_) end
     end
 
     class Item < Format::CSL::Item
