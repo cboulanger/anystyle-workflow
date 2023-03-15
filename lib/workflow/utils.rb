@@ -47,7 +47,7 @@ module Workflow
         if s.length > length
           s.to_s[0..length].gsub(/[^\w]\w+\s*$/, ellipsis)
         else
-          pad_char.nil? ? s : s.rjust(length+1, pad_char)
+          pad_char.nil? ? s : s.ljust(length+1, pad_char)
         end
       end
 

@@ -1,3 +1,4 @@
+#!/usr/bin/env ruby
 # frozen_string_literal: true
 
 require './lib/bootstrap'
@@ -51,7 +52,7 @@ end
 
 def test5
   require 'neo4j-ruby-driver'
-  url = ENV['NEO4J_URL']
+  url = 'bolt://172.31.240.1:7687' # ENV['NEO4J_URL']
   username = ENV['NEO4J_USERNAME']
   password = ENV['NEO4J_PASSWORD']
   auth = ::Neo4j::Driver::AuthTokens.basic(username, password)
@@ -59,7 +60,7 @@ def test5
   @driver = ::Neo4j::Driver::GraphDatabase.driver(url, auth, encryption: false)
   begin
     result = @driver.session.read_transaction do |tx|
-      result = tx.run('match (n:Foo) return n')
+      result = tx.run('match (n) return count(n)')
       if result.has_next?
         result.single.first
       else

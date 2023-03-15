@@ -384,7 +384,7 @@ if ARGV.include? 'export-dataset'
       # if instruction are in a file, they are separated by \n\n and can have an optional message as a one-line comment
       # preceeded by "#" or "//"
       type = File.extname(arg)[1..]
-      File.read(arg).split("\n\n").map(&:strip).reject(&:empty?).map do |cmd_block|
+      File.read(arg).gsub(/\r/, '').split("\n\n").map(&:strip).reject(&:empty?).map do |cmd_block|
         message, command = cmd_block.match(%r{((?://|#)([^\n]+)\n)?(.*)}m)[2..].map { |x| x&.strip }
         Workflow::Dataset::Instruction.new(type:, command:, message:)
       end

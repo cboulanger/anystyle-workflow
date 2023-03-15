@@ -62,7 +62,7 @@ module Workflow
         self.ref_year_end = Date.today.year + 2 if ref_year_end.to_i.zero?
         raise "Invalid text_dir #{text_dir}" unless text_dir.nil? || Dir.exist?(text_dir)
         return unless stopword_files.is_a?(Array) &&
-          (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
+                      (invalid = stopword_files.reject { |f| File.exist? f }).length.positive?
 
         raise "The following stopword files do not exist or are not accessible: \n#{invalid.join("\n")}"
       end
@@ -145,15 +145,15 @@ module Workflow
       # iterate over ids
       @ids.each do |id|
         counter += 1
-        progress_or_message "Processing #{id} (#{counter + 1}/#{total})\n#{'=' * 80}".colorize(:blue), increment: true, title: "Processing #{id}"
+        progress_or_message "Processing #{id} (#{counter + 1}/#{total})\n#{'=' * 80}".colorize(:blue), increment: true,
+                                                                                                       title: "Processing #{id}"
 
         if @options.use_cache &&
-          (item_data = Cache.load(id, prefix: 'dataset-item-')) # || items_cache[id] || items_cache[Utils.to_filename(id)]
+           (item_data = Cache.load(id, prefix: 'dataset-item-'))
           # use the cached item if exists
           item = Format::CSL::Item.new(item_data)
           add_item(item)
           progress_or_message ' - Using cached data'
-          Cache.save(id, item.to_h(compact: true), prefix: 'dataset-item-') # todo remove this
           next
         else
           # get the item merged from the different datasources
@@ -288,7 +288,6 @@ module Workflow
     # Export the dataset using the given exporter class
     # @param [Export::Exporter] exporter
     # @param [Integer] limit
-    # @param [String] jq A jq expression that filters the items, such as '.year > 1990'
     # @param [Array<Instruction>] preprocess An optional list of Instruction objects containing information
     #   on how to preprocess the data to be exported, to be handled by the exporter.
     # @param [Array<Instruction>] postprocess An optional list of Instruction objects containing information
@@ -315,14 +314,16 @@ module Workflow
       items.each do |item|
         counter += 1
         creator, year = item.creator_year_title
-        progress_or_message " - Processing #{creator} (#{year}) #{counter}/#{total}", title: 'Exporting', increment: true
+        progress_or_message " - Exporting #{creator} (#{year}) #{counter}/#{total}",
+                            title: "Exporting #{creator} (#{year})",
+                            increment: true
         exporter.add_item item
         break if counter >= total
       end
 
       # postprocessing
       postprocess.to_a.each do |instruction|
-        msg = instruction.message || "Postprocessing"
+        msg = instruction.message || 'Postprocessing'
         progress_or_message " - #{msg}", title: msg
         exporter.postprocess instruction
       end
