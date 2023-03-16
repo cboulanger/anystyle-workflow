@@ -3,6 +3,17 @@ require './lib/datasource/datasource'
 module Datasource
   class Anystyle < ::Datasource::Datasource
     class << self
+
+      # @return [String]
+      def id
+        'anystyle'
+      end
+
+      # @return [String]
+      def name
+        'Reference data from AnyStyle-extracted CSL-JSON files'
+      end
+
       # @return [Array<Item>]
       def import_items(ids, include_references: false, include_abstract: false)
         ids.map do |id|

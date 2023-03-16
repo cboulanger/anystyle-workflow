@@ -1,25 +1,29 @@
 # frozen_string_literal: true
 
 module Export
+
+  # @return [Exporter]
+  def self.by_id(id)
+    klass = ids.select { |k| k.id == id }.first
+    raise "No exporter with id '#{id}' exists." if klass.nil?
+
+    klass
+  end
+
+  # @return [Array<Exporter>]
+  def self.ids
+    constants
+      .map { |c| const_get c }
+      .select { |k| k < Exporter }
+  end
+
+  # @return [String]
+  def self.list
+    ids.map { |k| "#{k.id.ljust(20)}#{k.name}" }.sort.join("\n")
+  end
+
+  # Abstract exporter class, implementations must inherit from this class in order to be found
   class Exporter
-    def self.by_id(id)
-      klass = exporters.select { |k| k.id == id }.first
-      raise "No exporter with id '#{id}' exists." if klass.nil?
-
-      klass
-    end
-
-    # @return [Array<Exporter>]
-    def self.exporters
-      Export.constants
-            .map { |c| Export.const_get c}
-            .select { |k| k < Exporter  }
-    end
-
-    # @return [String]
-    def self.list
-      exporters.map { |k| "#{k.id.ljust(20)}#{k.name}" }.sort.join("\n")
-    end
 
     # @return [String]
     def self.id

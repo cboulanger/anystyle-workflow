@@ -3,11 +3,11 @@ require 'require_all'
 require 'dotenv'
 Dotenv.load('./.env')
 
-if ENV['SSL_BYPASS_CERTIFICATE_VERIFICATION']
-  # this is to work around WSL2 SSL issues
-  require 'openssl'
-  OpenSSL::SSL::VERIFY_PEER = OpenSSL::SSL::VERIFY_NONE
-end
+# if ENV['SSL_BYPASS_CERTIFICATE_VERIFICATION']
+#   # this is to work around WSL2 SSL issues
+#   require 'openssl'
+#   OpenSSL::SSL::VERIFY_PEER = OpenSSL::SSL::VERIFY_NONE
+# end
 
 # pycall gem to call python code from ruby
 require 'pycall'

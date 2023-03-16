@@ -10,6 +10,16 @@ module Datasource
 
     class << self
 
+      # @return [String]
+      def id
+        'grobid'
+      end
+
+      # @return [String]
+      def name
+        'Data from TEI files produced using GROBID'
+      end
+
       # @return [Array<Item>]
       def import_items(item_ids, include_references: false, include_abstract: false)
         item_ids.map do |id|

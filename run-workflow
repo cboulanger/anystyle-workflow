@@ -409,7 +409,7 @@ if ARGV.include? 'export-dataset'
 
   # @type [Workflow::Dataset]
   dataset = Workflow::Dataset.load(dataset_name, options:)
-  exporter_class = Export::Exporter.by_id(format)
+  exporter_class = Export.by_id(format)
   target ||= File.join(Workflow::Path.export, "export-#{format}-#{Workflow::Utils.timestamp}.#{exporter_class.extension}")
   exporter = exporter_class.new(target:,
                                 compact: !ARGV.include?('--no-compact'),

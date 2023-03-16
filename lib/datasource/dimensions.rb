@@ -20,6 +20,17 @@ module Datasource
     ].freeze
 
     class << self
+
+      # @return [String]
+      def id
+        'dimensions'
+      end
+
+      # @return [String]
+      def name
+        'Data from export files retrieved from dimensions.ai'
+      end
+
       @cache = nil
 
       def parse_authors(authors)

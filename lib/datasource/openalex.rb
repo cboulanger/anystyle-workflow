@@ -27,6 +27,16 @@ module Datasource
 
     class << self
 
+      # @return [String]
+      def id
+        'openalex'
+      end
+
+      # @return [String]
+      def name
+        'Data from api.openalex.org'
+      end
+
       attr_accessor :email, :batch_size
       attr_accessor :verbose
 

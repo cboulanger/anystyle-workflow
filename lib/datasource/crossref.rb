@@ -34,6 +34,17 @@ module Datasource
     end
 
     class << self
+
+      # @return [String]
+      def id
+        'crossref'
+      end
+
+      # @return [String]
+      def name
+        'Data from api.crossref.org'
+      end
+
       # @param [::Format::CSL::Item] item
       # @return [::Format::CSL::Item | nil]
       def lookup(item)
@@ -42,7 +53,7 @@ module Datasource
         author, year, title = item.creator_year_title
         container_title = item.container_title
         if title == container_title
-          # this is propably the case when a citation leaves out the title and gives the journal name only
+          # this is probably the case when a citation leaves out the title and gives the journal name only
           title = ''
         end
         cit_str = "#{author} (#{year}) #{title}, #{container_title}".strip
@@ -152,6 +163,7 @@ module Datasource
       end
 
       def title=(_) end
+
       def nick=(_) end
 
       def appellation=(_) end

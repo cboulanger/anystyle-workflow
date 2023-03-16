@@ -41,15 +41,11 @@ module Export
       case instruction.type
       when 'cypher'
         connect if @driver.nil?
-        loop do
-          result = @driver.session(database: @database) do |session|
-            session.write_transaction do |tx|
-              r = tx.run(instruction.command)
-              r.has_next? ? r.single.first : nil
-            end
+        @driver.session(database: @database) do |session|
+          session.write_transaction do |tx|
+            r = tx.run(instruction.command)
+            r.has_next? ? r.single.first : nil
           end
-          # apply commands repeatedly if this instruction is in a comment
-          break unless instruction.include?('REPEAT UNTIL NULL') && !result.nil?
         end
         # return items unchanged
         items

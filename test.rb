@@ -46,8 +46,8 @@ end
 
 def test4
   iso4 = PyCall.import_module('iso4')
-  puts iso4.abbreviate("Recent Advances in Studies on Cardiac Structure and Metabolism")
-  puts iso4.abbreviate("Journal of the American Academy of Dermatology", periods: false)
+  puts iso4.abbreviate('Recent Advances in Studies on Cardiac Structure and Metabolism')
+  puts iso4.abbreviate('Journal of the American Academy of Dermatology', periods: false)
 end
 
 def test5
@@ -64,14 +64,19 @@ def test5
       if result.has_next?
         result.single.first
       else
-        "nil"
+        'nil'
       end
     end
-    puts (result)
+    puts(result)
   rescue StandardError => e
     puts "Cannot connect to server: #{e}".colorize(:red)
     exit(1)
   end
 end
 
-test5
+def test6
+  item = Model::Zotero::Item.new({ title: 'Rechtssoziologie', date: '2015' })
+  puts JSON.dump(Datasource::ZoteroSqlite.findSimilar(item))
+end
+
+test6

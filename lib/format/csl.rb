@@ -57,10 +57,13 @@ module Format
       'webpage'
     ].freeze
 
-    class Object < Model::Model
+    class Model < ::Model::Model
       # Initialize an object with values
+      #
+      # @param [Hash] data
+      # @param [Hash, nil] accessor_map
+      # rubocop:disable Lint/MissingSuper
       def initialize(data, accessor_map: nil)
-        super()
         @_accessor_map = accessor_map || {}
         @_key_map = @_accessor_map.invert
         data.each do |k, v|
@@ -73,48 +76,7 @@ module Format
         end
       end
 
-      def to_h(compact: false)
-        hash = {}
-        instance_variables.each do |var|
-          attr_name = var.to_s.delete('@')
-          next if attr_name.start_with? '_'
-
-          key = key_name(attr_name)
-          value = instance_variable_get(var)
-          hash[key] = case value
-                      when Array
-                        value.map { |i| i.is_a?(CSL::Object) ? i.to_h(compact:) : i }
-                      when CSL::Object
-                        value.to_h(compact:)
-                      else
-                        value
-                      end
-        end
-        return hash unless compact
-
-        hash.delete_if do |_k, v|
-          case v
-          when Array
-            v.empty?
-          when String
-            v.strip.empty?
-          else
-            v.nil?
-          end
-        end
-      end
-
-      alias to_hash to_h
-
-      def to_json(opts = nil)
-        JSON.pretty_generate to_hash, opts
-      end
-
-      def self.from_hash(properties)
-        new(properties)
-      end
-
-      private
+      protected
 
       def accessor_name(key)
         @_key_map[key.to_s] || key.to_s.downcase.gsub('-', '_').to_sym
@@ -126,7 +88,7 @@ module Format
     end
 
     # A CSL-JSON date field such as issued, accessed ...
-    class Date < Object
+    class Date < Model
       ACCESSOR_MAP = {
         "date_parts": 'date-parts'
       }.freeze
@@ -167,7 +129,7 @@ module Format
     end
 
     # A name/creator field such as author, editor, translator...
-    class Creator < Object
+    class Creator < Model
       # csl standard
       attr_accessor :family, :given, :literal, :suffix, :dropping_particle, :non_dropping_particle, :sequence, :particle
 
@@ -262,7 +224,7 @@ module Format
     # "country": "England",
     # "country_code": "GB"
     #
-    class Affiliation < Object
+    class Affiliation < Model
       attr_accessor :center, :institution, :department, :address, :country,
                     :country_code, :ror, :x_affiliation_api_url, :x_affiliation_id, :x_affiliation_source
 
@@ -286,7 +248,7 @@ module Format
     end
 
     # Custom
-    class Custom < Object
+    class Custom < Model
       def initialize(data)
         @validated_by = {}
         super
@@ -309,7 +271,7 @@ module Format
     end
 
     # A CSL-JSON item.
-    class Item < Object
+    class Item < Model
       ACCESSOR_MAP = {
         'doi': 'DOI',
         'isbn': 'ISBN',
