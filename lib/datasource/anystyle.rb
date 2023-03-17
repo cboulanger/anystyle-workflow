@@ -14,6 +14,26 @@ module Datasource
         'Reference data from AnyStyle-extracted CSL-JSON files'
       end
 
+      # @return [Boolean]
+      def enabled?
+        true
+      end
+
+      # @return [Boolean]
+      def provides_metadata?
+        false
+      end
+
+      # @return [Boolean]
+      def provides_citation_data?
+        true
+      end
+
+      # @return [Boolean]
+      def provides_affiliation_data?
+        false
+      end
+
       # @return [Array<Item>]
       def import_items(ids, include_references: false, include_abstract: false)
         ids.map do |id|

@@ -20,6 +20,26 @@ module Datasource
         'Data from TEI files produced using GROBID'
       end
 
+      # @return [Boolean]
+      def enabled?
+        true
+      end
+
+      # @return [Boolean]
+      def provides_metadata?
+        false
+      end
+
+      # @return [Boolean]
+      def provides_citation_data?
+        true
+      end
+
+      # @return [Boolean]
+      def provides_affiliation_data?
+        true
+      end
+
       # @return [Array<Item>]
       def import_items(item_ids, include_references: false, include_abstract: false)
         item_ids.map do |id|

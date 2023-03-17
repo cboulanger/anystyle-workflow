@@ -75,8 +75,44 @@ def test5
 end
 
 def test6
-  item = Model::Zotero::Item.new({ title: 'Rechtssoziologie', date: '2015' })
-  puts JSON.dump(Datasource::ZoteroSqlite.findSimilar(item))
+  require 'sqlite3'
+  ext_dir = '/opt/sqlite-extensions' # or whereever you keep the extensions
+
+  db = SQLite3::Database.new(':memory:')
+  db.enable_load_extension(true)
+  db.load_extension(File.join(ext_dir, 'spellfix.o'))
+  db.execute('CREATE VIRTUAL TABLE demo USING spellfix1;')
+  db.execute('CREATE TABLE mytable (id integer, description text)')
+  db.execute('INSERT INTO mytable VALUES (1, "hello world, guys")')
+  db.execute('INSERT INTO mytable VALUES (2, "hello there everybody")')
+  result = db.execute('SELECT * FROM mytable WHERE editdist3(description, "hel o wrold guy") < 600')
+  puts result
 end
 
-test6
+def test7
+  item = Model::Zotero::Item.new({ title: 'Rechtssoziologie von Sinz', date: '2015' })
+  results = Datasource::ZoteroSqlite
+            .find_similar_items(item)
+            .map { |i| i.to_h(compact: true) }
+  puts "#{results.length} hits, first one is:"
+  puts JSON.dump(results.first)
+end
+
+def test8
+  item = Model::Zotero::Item.new({ title: 'Die Rechtssoziologfe von Hugo Sinzhelmer - eine Annäherung', date: '2015' })
+  results = Datasource::ZoteroSqlite
+            .find_similar_items(item, edit_distance: 600)
+            .map { |i| i.to_h(compact: true) }
+  puts "#{results.length} hits, first one is:"
+  puts JSON.dump(results.first)
+end
+
+def test9
+  data = { "author": [{ "family": 'Seifert' }], "title": 'Die Rechtssoziologie von Hugo Sinzheimer',
+           "issued": { "date-parts": [[2015]] } }
+  item = Format::CSL::Item.new(data)
+  Datasource::ZoteroSqlite.verbose=true
+  puts JSON.dump(Datasource::ZoteroSqlite.lookup(item))
+end
+
+test9

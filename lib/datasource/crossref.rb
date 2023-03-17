@@ -45,6 +45,31 @@ module Datasource
         'Data from api.crossref.org'
       end
 
+      # @return [Boolean]
+      def enabled?
+        true
+      end
+
+      # @return [Boolean]
+      def provides_metadata?
+        true
+      end
+
+      # @return [Array<String>]
+      def metadata_types
+        [Format::CSL::ARTICLE_JOURNAL, Format::CSL::CHAPTER]
+      end
+
+      # @return [Boolean]
+      def provides_citation_data?
+        true
+      end
+
+      # @return [Boolean]
+      def provides_affiliation_data?
+        true
+      end
+
       # @param [::Format::CSL::Item] item
       # @return [::Format::CSL::Item | nil]
       def lookup(item)
@@ -61,7 +86,7 @@ module Datasource
         # TO DO: use HTTPX semantics https://honeyryderchuck.gitlab.io/httpx/wiki/Make-Requests
         url = "https://api.crossref.org/works?query.bibliographic=#{ERB::Util.url_encode(cit_str)}&select=#{select}&rows=1"
         if (data = Cache.load(url, prefix: '_cr-bib-')).nil?
-          puts "   - looking up '#{cit_str}'" if @verbose
+          puts "     - crossref bibliographic lookup query is '#{cit_str[..80]}'" if @verbose
           begin
             response = @http.get(url)
             raise response.error if response.error || response.status >= 400
@@ -76,16 +101,16 @@ module Datasource
             data = nil
           end
         elsif @verbose
-          puts "   - getting '#{cit_str}' from cache"
+          puts "     - crossref: cached data exists"
         end
         if data.to_s.empty?
           item = nil
-          puts '   - no match was found' if @verbose
+          puts '     - crossref: no match was found' if @verbose
         else
           item = Item.new(data)
-          url = "https://doi.org/#{item.doi}"
+          url = "https://api.crossref.org/works/#{item.doi}"
           item.custom.metadata_api_url = url
-          puts "   - found #{url}" if @verbose
+          puts "     - crossref: possible api url: #{url}" if @verbose
         end
         item
       end

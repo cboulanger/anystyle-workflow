@@ -36,7 +36,7 @@ module Workflow
       end
 
       # vendor data
-      datasource_ids = Workflow::Utils.datasource_ids
+      datasource_ids = %w[grobid openalex crossref dimensions wos]
       columns += datasource_ids
 
       # dataset

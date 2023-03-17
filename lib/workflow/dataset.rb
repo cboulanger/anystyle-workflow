@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'damerau-levenshtein'
+
 module Workflow
   class Dataset
     include ::Utils::NLP
@@ -128,14 +130,13 @@ module Workflow
     end
 
     # @param [Array<String>] ids An array of ids that identify the references, such as a DOI, which can be used
-    #   to call #merge_and_validate_refs
+    #   to call #merge_and_validate_citation_data
     # @param [Integer] limit Limits the number of generated items (mainly for test purposes)
-    def import(ids, datasources: nil, limit: nil)
+    def import(ids, limit: nil)
       raise 'Argument must be an non-empty array of string ids' \
         unless ids.is_a?(Array) && ids.first.is_a?(String)
 
       @ids = ids
-      @datasources = datasources || Workflow::Utils.datasource_ids
 
       # @type [Array<Format::CSL::Item>]
       num_refs = 0
@@ -147,7 +148,7 @@ module Workflow
       # iterate over ids
       @ids.each do |id|
         counter += 1
-        progress_or_message "Processing #{id} (#{counter + 1}/#{total})\n#{'=' * 80}".colorize(:blue), increment: true,
+        progress_or_message "Processing #{id} (#{counter}/#{total})\n#{'=' * 80}".colorize(:blue), increment: true,
                             title: "Processing #{id}"
 
         if @options.use_cache &&
@@ -156,13 +157,15 @@ module Workflow
           item = Format::CSL::Item.new(item_data)
           add_item(item)
           progress_or_message ' - Using cached data'
+          break if limit && counter >= limit
+
           next
         else
           # get the item merged from the different datasources
           progress_or_message "no cache for #{id}".colorize(:yellow)
           begin
             # merge available data according to the policies
-            item = merge_and_validate_refs(id, @datasources)
+            item = merge_and_validate(id)
           rescue NoDataError => e
             puts e.to_s.colorize(:red)
             next
@@ -188,12 +191,17 @@ module Workflow
         num_refs += n
         progress_or_message " - Found #{n} references"
 
-        # get missing reference metadata from crossref
-        if @options.reference_lookup
+        # get missing reference metadata
+        if n.positive? && @options.reference_lookup
           item.x_references = references.map.with_index do |ref, i|
-            progress_or_message "   - verifying reference #{i + 1}/#{n}",
-                                title: "Verifying reference #{i + 1}/#{n}"
-            reconcile ref
+            if ref.doi
+              puts "   - DOI exists: https://doi.org/#{ref.doi}".colorize(:green) if @options.verbose
+              ref
+            else
+              progress_or_message "   - verifying reference #{i + 1}/#{n}",
+                                  title: "Verifying reference #{i + 1}/#{n}"
+              reconcile ref
+            end
           end
         end
 
@@ -214,80 +222,10 @@ module Workflow
         add_item(item)
         Cache.save(id, item.to_h(compact: true), prefix: 'dataset-item-')
 
-        limit_reached = limit && counter >= limit
-        break if limit_reached
+        break if limit && counter >= limit
       end
       progress_or_message finish: true
       items
-    end
-
-    def reconcile(ref)
-      a1, y1 = ref.creator_year_title(downcase: true)
-      if ref.doi
-        puts "   - DOI exists: https://doi.org/#{ref.doi}".colorize(:green) if @options.verbose
-      elsif a1.to_s.empty? || a1 == 'no_author'
-        puts '   - insufficient data'.colorize(:yellow) if @options.verbose
-      else
-        # try to match the reference only if it is a journal article
-        found_ref = case ref.type
-                    when ::Format::CSL::ARTICLE_JOURNAL
-                      ::Datasource::Crossref.lookup(ref)
-                    else
-                      puts "   - no reconciliation service available for type '#{ref.type}'" if @options.verbose
-                    end
-        if found_ref
-          a2, y2 = found_ref.creator_year_title(downcase: true)
-          if a1 == a2 && y1 == y2
-            puts '   - merging crossref metadata to reference'.colorize(:green) if @options.verbose
-            # save the validation data
-            found_ref.custom.validated_by = ref.custom.validated_by
-            ref = found_ref
-            add_journal_abbreviation(ref)
-          elsif @options.verbose
-            puts '   - crossref data does not match'.colorize(:yellow)
-          end
-        end
-      end
-      ref
-    end
-
-    def build_indexes
-      raise 'You must first load or import dataset items' if @items.to_a.empty?
-
-      @items.each do |item|
-        author, year, title = item.creator_year_title(downcase: true)
-        @id_index[author] = {} if @id_index[author].nil?
-        @id_index[author][year] = {} if @id_index[author][year].nil?
-        @id_index[author][year][title] = item.id
-        item.creators.each do |c|
-          @affiliation_index["#{c.family} #{c.initial}"] ||= c.x_affiliations.to_a.first
-        end
-      end
-    end
-
-    def add_missing_references
-      build_indexes if @id_index.empty?
-      @items.each do |item|
-        item.x_references.each do |ref|
-          next unless ref.doi.to_s.empty?
-
-          author, year, title = ref.creator_year_title(downcase: true)
-          next if @id_index[author].to_h[year].to_h.empty?
-
-          ref.doi = @id_index[author][year][title] || @id_index[author][year].values.first
-        end
-      end
-    end
-
-    def add_missing_affiliations
-      build_indexes if @id_index.empty?
-      @items.each do |item|
-        item.creators.each do |c|
-          if c.x_affiliations.to_a.empty? && (aff = @affiliation_index["#{c.family} #{c.initial}"])
-            c.x_affiliations = [aff]
-          end
-        end
-      end
     end
 
     # Export the dataset using the given exporter class
@@ -361,43 +299,42 @@ module Workflow
 
     protected
 
-    # Given an identifier, merge available data. Anystyle references will be validated against the vendor references.
-    # TO DO: the caching stuff is confusing. we need a cache only to speed up re-runs when an error happens.
-    # On the other hand, the http responses are also cached but this cannot be controlled via CLI/API.
-    # Instead, caching of items should be off by default, caching of HTTP should be configurable.
+    # Given an identifier, merge available data
     # @param [String] item_id
     # @return [Format::CSL::Item]
-    # @param [Array<String>] datasource_ids
-    def merge_and_validate_refs(item_id, datasource_ids)
+    def merge_and_validate(item_id)
       raise 'Id currently must be a DOI' unless item_id.start_with? '10.'
-
-      # get anystyle item (enriched with crossref metadata)
-      # @type [Item]
-      item = Datasource::Anystyle.import_items([item_id]).first
-
-      raise NoDataError, "No AnyStyle data available for ID #{item_id}" if item.nil?
 
       policies = @options.policies
 
       # The validated references
       # @type [Array<Format::CSL::Item>]
       validated_references = []
-
       num_anystyle_added_refs = 0
       num_anystyle_validated_refs = 0
       num_anystyle_unvalidated_refs = 0
+      item = nil
 
       # lookup with crossref metadata by doi
-      datasource_ids.each do |datasource_id|
-        # @type [::Datasource::Datasource]
-        datasource = ::Datasource.by_id(datasource_id)
+      Datasource.citation_data_providers.each do |datasource|
+
         datasource.verbose = @options.verbose
+
+        if item.nil?
+          # get anystyle item (enriched with crossref metadata) this works because anystyle
+          # is the first in the list
+          # @type [Item]
+          item = datasource.import_items([item_id]).first
+          next
+        end
 
         # @type [Format::CSL::Item]
         vendor_item = datasource.import_items([item_id]).first
 
+        raise NoDataError, "No AnyStyle data available for ID #{item_id}" if item.nil?
+
         if vendor_item.nil?
-          puts " - #{datasource_id}: No data available".colorize(:red) if @options.verbose
+          puts " - #{datasource.id}: No data available".colorize(:red) if @options.verbose
           next
         end
 
@@ -411,7 +348,7 @@ module Workflow
           validated_references += vendor_refs
           num_vendor_added_refs += vendor_refs.length
           if @options.verbose && vendor_refs.length.positive? && @options.verbose
-            puts " - #{datasource_id}: added #{vendor_refs.length} references"
+            puts " - #{datasource.id}: added #{vendor_refs.length} references"
           end
         elsif item.x_references.to_a.length.positive?
           # match each anystyle reference against all vendor references since we cannot be sure they are in the same order
@@ -440,7 +377,7 @@ module Workflow
               ref.validate_by(vendor_ref)
 
               # add affiliations
-              add_affiliations(ref, vendor_ref, datasource_id)
+              add_affiliations(ref, vendor_ref, datasource.id)
 
               # add missing doi
               ref.doi ||= vendor_ref.doi if vendor_ref.doi
@@ -448,7 +385,7 @@ module Workflow
               # add only if reference hasn't been validated already
               unless ref.custom.validated_by.keys.count > 1
                 validated_references.append(ref)
-                puts " - anystyle: Added #{author} #{year} (validated by #{datasource_id})" if @options.verbose
+                puts " - anystyle: Added #{author} #{year} (validated by #{datasource.id})" if @options.verbose
                 num_anystyle_added_refs += 1
               end
               num_anystyle_validated_refs += 1
@@ -457,7 +394,7 @@ module Workflow
             next if matched
 
             # add vendor reference that we don't already have only if so instructed
-            unless policies.include?(ADD_MISSING_ALL) || (policies.include?(ADD_MISSING_FREE) && datasource_id != 'wos')
+            unless policies.include?(ADD_MISSING_ALL) || (policies.include?(ADD_MISSING_FREE) && datasource.id != 'wos')
               next
             end
 
@@ -472,13 +409,13 @@ module Workflow
             end
 
             validated_references.append(vendor_ref)
-            puts " - #{datasource_id}: Added #{vendor_author} (#{vendor_year}) " if @options.verbose
+            puts " - #{datasource.id}: Added #{vendor_author} (#{vendor_year}) " if @options.verbose
             num_vendor_added_refs += 1
           end
         end
 
         if @options.verbose && num_vendor_added_refs.positive?
-          puts " - #{datasource_id}: validated #{num_anystyle_validated_refs} anystyle references " \
+          puts " - #{datasource.id}: validated #{num_anystyle_validated_refs} anystyle references " \
                  "(of which #{num_anystyle_added_refs} were added), " \
                  "and added #{num_vendor_added_refs} missing references"
         end
@@ -487,7 +424,7 @@ module Workflow
         item.custom.times_cited = [vendor_item.custom.times_cited || 0, item.custom.times_cited || 0].max
 
         # add affiliation data if missing
-        add_affiliations(item, vendor_item, datasource_id) if policies.include?(ADD_AFFILIATIONS)
+        add_affiliations(item, vendor_item, datasource.id) if policies.include?(ADD_AFFILIATIONS)
 
         # add abstract if missing
         item.abstract ||= vendor_item.abstract
@@ -530,6 +467,89 @@ module Workflow
       end
       # return result
       item
+    end
+
+    def reconcile(ref)
+      a1, y1, t1 = ref.creator_year_title(downcase: true)
+      if a1.to_s.empty? || a1 == 'no_author' || t1.to_s.empty? || t1 == 'no_title'
+        puts '   - insufficient data'.colorize(:yellow) if @options.verbose
+        return ref
+      end
+      type_supported = false
+      Datasource.metadata_providers.each do |provider|
+
+        if provider.metadata_types.include? ref.type
+          puts "     - #{provider.id}: looking up #{ref.to_s[..80]}" if @options.verbose
+        else
+          puts "     - #{provider.id}: no support for type #{ref.type}" if @options.verbose
+          next
+        end
+
+        type_supported = true
+        found_ref = provider.lookup(ref)
+        if found_ref.nil?
+          puts "     - #{provider.id}: nothing found.".colorize(:yellow) if @options.verbose
+          next
+        end
+        puts "     - #{provider.id}: lookup returned #{found_ref.to_s[..80]}" if @options.verbose
+        a2, y2, t2 = found_ref.creator_year_title(downcase: true)
+        if y1 != y2 || (a1 != a2 && DamerauLevenshtein.distance(a1, a2) > 3) #||
+          #(t1 != t2 && DamerauLevenshtein.distance(t1, t2) > 10)
+          puts "     - #{provider.id}: data does not match".colorize(:yellow) if @options.verbose
+          next
+        end
+        if found_ref.to_h.keys.length < ref.to_h.keys.length
+          puts "     - #{provider.id}: found data contains less information than what we have".colorize(:yellow) if @options.verbose
+          next
+        end
+        puts "     - merging #{provider.id} metadata to reference".colorize(:green) if @options.verbose
+        # save the validation data
+        found_ref.custom.validated_by = ref.custom.validated_by
+        ref = found_ref
+        add_journal_abbreviation(ref)
+        break
+      end
+      puts "   - no reconciliation service available for type '#{ref.type}'" if !type_supported && @options.verbose
+      ref
+    end
+
+    def build_indexes
+      raise 'You must first load or import dataset items' if @items.to_a.empty?
+
+      @items.each do |item|
+        author, year, title = item.creator_year_title(downcase: true)
+        @id_index[author] = {} if @id_index[author].nil?
+        @id_index[author][year] = {} if @id_index[author][year].nil?
+        @id_index[author][year][title] = item.id
+        item.creators.each do |c|
+          @affiliation_index["#{c.family} #{c.initial}"] ||= c.x_affiliations.to_a.first
+        end
+      end
+    end
+
+    def add_missing_references
+      build_indexes if @id_index.empty?
+      @items.each do |item|
+        item.x_references.each do |ref|
+          next unless ref.doi.to_s.empty?
+
+          author, year, title = ref.creator_year_title(downcase: true)
+          next if @id_index[author].to_h[year].to_h.empty?
+
+          ref.doi = @id_index[author][year][title] || @id_index[author][year].values.first
+        end
+      end
+    end
+
+    def add_missing_affiliations
+      build_indexes if @id_index.empty?
+      @items.each do |item|
+        item.creators.each do |c|
+          if c.x_affiliations.to_a.empty? && (aff = @affiliation_index["#{c.family} #{c.initial}"])
+            c.x_affiliations = [aff]
+          end
+        end
+      end
     end
 
     # @param [Format::CSL::Item] item

@@ -31,7 +31,39 @@ module Datasource
         'Data from export files retrieved from dimensions.ai'
       end
 
-      @cache = nil
+      # @return [Boolean]
+      def enabled?
+        true
+      end
+
+      # @return [Boolean]
+      def provides_metadata?
+        false
+      end
+
+      # @return [Boolean]
+      def provides_citation_data?
+        true
+      end
+
+      # @return [Boolean]
+      def provides_affiliation_data?
+        true
+      end
+
+      # @return [Array<Item>]
+      def import_items(dois, include_references: false, include_abstract: false, reset_cache: false)
+        @cache ||= Cache.load('dimensions', use_literal: true)
+        if @cache && !reset_cache
+          puts " - Getting data for #{dois.join(',')} from cache..." if verbose
+        else
+          @cache = init_cache(include_references: false, include_abstract:)
+          Cache.save('dimensions', @cache, use_literal: true)
+        end
+        dois.map { |doi| Item.new(@cache[doi]) }
+      end
+
+      private
 
       def parse_authors(authors)
         Namae.parse(authors).map(&:to_h).map { |h| h.slice(:family, :given) }
@@ -97,19 +129,6 @@ module Datasource
           end
         end
         cache
-      end
-
-      # interface method
-      # @return [Array<Item>]
-      def import_items(dois, include_references: false, include_abstract: false, reset_cache: false)
-        @cache ||= Cache.load('dimensions', use_literal: true)
-        if @cache && !reset_cache
-          puts " - Getting data for #{dois.join(',')} from cache..." if verbose
-        else
-          @cache = init_cache(include_references: false, include_abstract:)
-          Cache.save('dimensions', @cache, use_literal: true)
-        end
-        dois.map { |doi| Item.new(@cache[doi]) }
       end
     end
 

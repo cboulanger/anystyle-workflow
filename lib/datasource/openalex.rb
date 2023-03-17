@@ -37,6 +37,31 @@ module Datasource
         'Data from api.openalex.org'
       end
 
+      # @return [Boolean]
+      def enabled?
+        true
+      end
+
+      # @return [Boolean]
+      def provides_metadata?
+        false #
+      end
+
+      # @return [Array<String>]
+      def metadata_types
+        [Format::CSL::ARTICLE_JOURNAL, Format::CSL::CHAPTER, Format::CSL::BOOK]
+      end
+
+      # @return [Boolean]
+      def provides_citation_data?
+        true
+      end
+
+      # @return [Boolean]
+      def provides_affiliation_data?
+        true
+      end
+
       attr_accessor :email, :batch_size
       attr_accessor :verbose
 

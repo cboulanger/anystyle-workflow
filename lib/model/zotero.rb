@@ -39,6 +39,14 @@ module Model
                     :meetingName, :programTitle, :network, :reportNumber, :reportType, :institution,
                     :nameOfAct, :codeNumber, :publicLawNumber, :dateEnacted, :thesisType, :university,
                     :studio, :websiteTitle, :repository, :archiveID, :citationKey
+
+      def creators
+        @creators || []
+      end
+
+      def creators=(creators)
+        @creators = creators.map { |c| c.is_a?(Creator) ? c : Creator.new(c) }
+      end
     end
   end
 end

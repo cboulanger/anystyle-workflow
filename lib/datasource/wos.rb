@@ -18,6 +18,26 @@ module Datasource
         'Data from csl-json files produced by a postgresql query on fiz-karlsruhe.de'
       end
 
+      # @return [Boolean]
+      def enabled?
+        true
+      end
+
+      # @return [Boolean]
+      def provides_metadata?
+        false
+      end
+
+      # @return [Boolean]
+      def provides_citation_data?
+        true
+      end
+
+      # @return [Boolean]
+      def provides_affiliation_data?
+        true
+      end
+
       def import_items(ids)
         @cache ||= ::Datasource.get_vendor_data(['wos'])['wos']
         ids.map do |id|

@@ -497,6 +497,13 @@ module Format
         creators.map(&:family_and_given)
       end
 
+      # return an array of arrays [[family, given], ...] with the family
+      # names and the given names of the creators (author OR editor) entry.
+      # @return [Array<[Array, Array]>]
+      def creator_family_names
+        creator_names.map(&:first)
+      end
+
       # return an array with author, year and title
       # @param [Boolean] downcase
       # @return [Array<String, Integer, String>]
@@ -515,6 +522,11 @@ module Format
           t = t&.downcase
         end
         [c, y, t]
+      end
+
+      def to_s
+        creator, year, title = creator_year_title
+        "#{creator} (#{year}), #{title}"
       end
 
       # @param [Item] item
