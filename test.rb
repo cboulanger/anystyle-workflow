@@ -108,11 +108,19 @@ def test8
 end
 
 def test9
-  data = { "author": [{ "family": 'Seifert' }], "title": 'Die Rechtssoziologie von Hugo Sinzheimer',
-           "issued": { "date-parts": [[2015]] } }
+  data = { "author": [{ "family": 'Boulanger' }], "title": 'Zur Aktualität der Todesstrafe',
+           "issued": { "date-parts": [[2002]] } }
   item = Format::CSL::Item.new(data)
   Datasource::ZoteroSqlite.verbose=true
   puts JSON.dump(Datasource::ZoteroSqlite.lookup(item))
 end
 
-test9
+def test10
+  data = { "author": [{ "family": 'Boulanger' }], "title": 'Zur Aktualität der Todesstrafe',
+           "issued": { "date-parts": [[2002]] } }
+  item = Format::CSL::Item.new(data)
+  Datasource::Lobid.verbose = true
+  puts JSON.dump(Datasource::Lobid.lookup(item))
+end
+
+test10

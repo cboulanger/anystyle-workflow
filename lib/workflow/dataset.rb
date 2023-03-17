@@ -181,8 +181,12 @@ module Workflow
            (item.keyword.to_a.empty? && @options.generate_keywords)
           progress_or_message ' - Generating abstract and keywords from fulltext'
           txt_file_path = File.join(@options.text_dir, "#{Workflow::Utils.to_filename(id)}.txt")
-          text = File.read(txt_file_path, encoding: 'utf-8')
-          add_metadata_from_text(item, text)
+          if File.exist? txt_file_path
+            text = File.read(txt_file_path, encoding: 'utf-8')
+            add_metadata_from_text(item, text)
+          else
+            puts "Fulltext file does not exist: #{txt_file_path}".colorize(:red)
+          end
         end
 
         # references
@@ -486,6 +490,7 @@ module Workflow
         end
 
         type_supported = true
+        # @type [Format::CSL::Item]
         found_ref = provider.lookup(ref)
         if found_ref.nil?
           puts "     - #{provider.id}: nothing found.".colorize(:yellow) if @options.verbose
@@ -493,13 +498,15 @@ module Workflow
         end
         puts "     - #{provider.id}: lookup returned #{found_ref.to_s[..80]}" if @options.verbose
         a2, y2, t2 = found_ref.creator_year_title(downcase: true)
-        if y1 != y2 || (a1 != a2 && DamerauLevenshtein.distance(a1, a2) > 3) #||
-          #(t1 != t2 && DamerauLevenshtein.distance(t1, t2) > 10)
+        if y1 != y2 || a2.nil? ||
+            (a1 != a2 && DamerauLevenshtein.distance(a1, a2) > 3 && DamerauLevenshtein.distance(t1, t2) > 5)
           puts "     - #{provider.id}: data does not match".colorize(:yellow) if @options.verbose
           next
         end
         if found_ref.to_h.keys.length < ref.to_h.keys.length
           puts "     - #{provider.id}: found data contains less information than what we have".colorize(:yellow) if @options.verbose
+          ref.doi ||= found_ref.doi
+          ref.isbn ||= found_ref.isbn
           next
         end
         puts "     - merging #{provider.id} metadata to reference".colorize(:green) if @options.verbose

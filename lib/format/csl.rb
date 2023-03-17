@@ -124,7 +124,7 @@ module Format
       # Returns the date's year as an integer, if available, otherwise nil
       # @return [Integer, nil]
       def to_year
-        @date_parts&.first&.first || @raw&.scan(/\d{4}/)&.first
+        @date_parts&.first&.first&.to_i || @raw&.scan(/\d{4}/)&.first&.to_i
       end
     end
 
@@ -134,7 +134,13 @@ module Format
       attr_accessor :family, :given, :literal, :suffix, :dropping_particle, :non_dropping_particle, :sequence, :particle
 
       # extensions
-      attr_accessor :x_orcid, :x_author_id, :x_author_api_url, :x_raw_affiliation_string
+      attr_accessor :x_orcid, :x_author_id, :x_author_api_url, :x_raw_affiliation_string, :x_date_birth
+
+      # ignore Namae fields
+      def nick=(*) end
+
+      def title=(*) end
+      def appellation=(*) end
 
       # @!attribute x_affiliations
       # @return [Array<Affiliation>]
@@ -251,12 +257,13 @@ module Format
     class Custom < Model
       def initialize(data)
         @validated_by = {}
+        @same_as = []
         super
       end
 
       # @!attribute validated_by
       # @return [Hash<{String => Item}>
-      attr_accessor :times_cited, :validated_by, :metadata_source, :metadata_id, :metadata_api_url,
+      attr_accessor :same_as, :times_cited, :validated_by, :metadata_source, :metadata_id, :metadata_api_url,
                     :reference_data_source, :cited_by_api_url, :container_id, :generated_keywords
 
       # Contains a precalculated iso4-abbreviated title that can be used to compare records
@@ -302,6 +309,8 @@ module Format
       def initialize(data, accessor_map: {})
         @isbn = []
         @issn = []
+        @author = []
+        @editor =[]
         super(data, accessor_map: ACCESSOR_MAP.merge(accessor_map))
       end
 
@@ -369,7 +378,7 @@ module Format
                                "date-parts": [[date_obj]]
                              })
                   else
-                    raise 'Invalid date'
+                    raise "Invalid date: '#{date_obj}'"
                   end
       end
 
