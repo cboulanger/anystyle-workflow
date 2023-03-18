@@ -30,6 +30,7 @@ module Format
                 w.title = #{JSON.dump @item.title&.downcase || 'no title'},
                 w.year = #{@item.issued&.to_year || 0},
                 w.type = "#{@item.type}",
+                w.label = #{JSON.dump @item.to_s},
                 w.url = "#{@item.url}"
       CYPHER
       )

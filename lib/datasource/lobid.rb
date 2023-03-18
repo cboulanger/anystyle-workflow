@@ -7,6 +7,7 @@ require 'erb'
 
 module Datasource
   class Lobid < ::Datasource::Datasource
+
     HTTPX::Plugins.load_plugin(:follow_redirects)
     HTTPX::Plugins.load_plugin(:retries)
     HTTPX::Plugins.load_plugin(:rate_limiter)
@@ -14,7 +15,6 @@ module Datasource
     @batch_size = 100
     @base_url = 'https://lobid.org'
     @base_api_url = 'https://lobid.org/resources/search?'
-    @entity_types = %w[work author institution venue]
     @headers = {
       'Accept' => 'application/json'
     }
@@ -86,6 +86,7 @@ module Datasource
       end
 
     end
+
     class Creator < Format::CSL::Creator
       def initialize(data)
         data.merge! Namae.parse(data['label']).first.to_h
@@ -100,6 +101,7 @@ module Datasource
         self.x_author_id = id
       end
 
+      # ignore the following attributes
       def dateofbirthanddeath=(*) end
       def label=(*); end
       def type=(*) end

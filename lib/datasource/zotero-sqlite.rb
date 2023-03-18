@@ -84,7 +84,7 @@ module Datasource
         else
           puts "     - zotero-sqlite: cached data exists"  if @verbose
         end
-        Format::CSL::Item.new(data)
+        data.empty? ? nil : Format::CSL::Item.new(data)
       end
 
       # Given a Zotero Item object, find other items in Zotero that are similar, based on

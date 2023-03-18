@@ -382,10 +382,13 @@ if ARGV.include? 'export-dataset'
         message, command = cmd_block.match(%r{((?://|#)([^\n]+)\n)?(.*)}m)[2..].map { |x| x&.strip }
         Workflow::Dataset::Instruction.new(type:, command:, message:)
       end
-    else
+    elsif arg.include? ':'
       # otherwise, a plain string in the format of type:command
       type, command = arg.match(/([^:]+):(.*)/)[1..]
       [Workflow::Dataset::Instruction.new(type:, command:)]
+    else
+      puts "Cannot parse #{arg}".colorize(:red)
+      exit 1
     end
   end
 

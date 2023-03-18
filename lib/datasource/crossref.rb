@@ -101,7 +101,7 @@ module Datasource
             data = nil
           end
         elsif @verbose
-          puts "     - crossref: cached data exists"
+          puts "     - crossref: cached data exists" if @verbose
         end
         if data.to_s.empty?
           item = nil
@@ -149,7 +149,7 @@ module Datasource
           items = [items] unless items.is_a? Array
           Cache.save(dois, items)
         elsif verbose
-          puts " - CrossRef: Using cache for DOI #{dois.join(', ')}" if verbose
+          puts " - CrossRef: Using cache for DOI #{dois.join(', ')}"
         end
         items.map do |item|
           item.delete('reference') unless include_references
@@ -187,11 +187,6 @@ module Datasource
         self.x_affiliations = affiliation.map { |a| Affiliation.new({ 'literal': a }) }
       end
 
-      def title=(_) end
-
-      def nick=(_) end
-
-      def appellation=(_) end
     end
 
     class Item < Format::CSL::Item
@@ -239,7 +234,7 @@ module Datasource
       end
 
       def abstract=(abstract)
-        @abstract = abstract.gsub!(/<[^<]+?>/, '')
+        @abstract = abstract&.gsub(/<[^<]+?>/, '')
       end
 
       def is_referenced_by_count=(count)

@@ -198,12 +198,15 @@ module Workflow
         # get missing reference metadata
         if n.positive? && @options.reference_lookup
           item.x_references = references.map.with_index do |ref, i|
+            progress_or_message "   - verifying reference #{i + 1}/#{n}: #{ref.to_s}",
+                                title: "Verifying reference #{i + 1}/#{n}"
             if ref.doi
-              puts "   - DOI exists: https://doi.org/#{ref.doi}".colorize(:green) if @options.verbose
+              puts "     - DOI exists: https://doi.org/#{ref.doi}".colorize(:green) if @options.verbose
+              ref
+            elsif !ref.isbn.nil? && !ref.isbn.empty?
+              puts "     - ISBN exists: #{ref.ISBN}".colorize(:green) if @options.verbose
               ref
             else
-              progress_or_message "   - verifying reference #{i + 1}/#{n}",
-                                  title: "Verifying reference #{i + 1}/#{n}"
               reconcile ref
             end
           end
@@ -473,6 +476,8 @@ module Workflow
       item
     end
 
+    # Try to reconcile an extracted reference with datasources that allow a metadata look
+    # @param [Format::CSL::Item] ref
     def reconcile(ref)
       a1, y1, t1 = ref.creator_year_title(downcase: true)
       if a1.to_s.empty? || a1 == 'no_author' || t1.to_s.empty? || t1 == 'no_title'
@@ -481,8 +486,7 @@ module Workflow
       end
       type_supported = false
       Datasource.metadata_providers.each do |provider|
-
-        if provider.metadata_types.include? ref.type
+        if provider.metadata_types.include?(ref.type || ref.guess_type)
           puts "     - #{provider.id}: looking up #{ref.to_s[..80]}" if @options.verbose
         else
           puts "     - #{provider.id}: no support for type #{ref.type}" if @options.verbose
@@ -490,19 +494,26 @@ module Workflow
         end
 
         type_supported = true
-        # @type [Format::CSL::Item]
-        found_ref = provider.lookup(ref)
+        begin
+          # @type [Format::CSL::Item]
+          found_ref = provider.lookup(ref)
+        rescue StandardError => e
+          puts e.message.to_s.colorize(:red)
+          next
+        end
         if found_ref.nil?
           puts "     - #{provider.id}: nothing found.".colorize(:yellow) if @options.verbose
           next
         end
         puts "     - #{provider.id}: lookup returned #{found_ref.to_s[..80]}" if @options.verbose
         a2, y2, t2 = found_ref.creator_year_title(downcase: true)
+        # check if items are the same or at least similar enough
         if y1 != y2 || a2.nil? ||
-            (a1 != a2 && DamerauLevenshtein.distance(a1, a2) > 3 && DamerauLevenshtein.distance(t1, t2) > 5)
+          (a1 != a2 && (DamerauLevenshtein.distance(a1, a2) > 3 || DamerauLevenshtein.distance(t1, t2) > 5))
           puts "     - #{provider.id}: data does not match".colorize(:yellow) if @options.verbose
           next
         end
+        # we have a match
         if found_ref.to_h.keys.length < ref.to_h.keys.length
           puts "     - #{provider.id}: found data contains less information than what we have".colorize(:yellow) if @options.verbose
           ref.doi ||= found_ref.doi
@@ -510,8 +521,9 @@ module Workflow
           next
         end
         puts "     - merging #{provider.id} metadata to reference".colorize(:green) if @options.verbose
-        # save the validation data
+        # save the reconciliation data
         found_ref.custom.validated_by = ref.custom.validated_by
+        found_ref.custom.original_data = ref
         ref = found_ref
         add_journal_abbreviation(ref)
         break

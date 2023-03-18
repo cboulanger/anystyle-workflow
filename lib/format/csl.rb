@@ -136,12 +136,6 @@ module Format
       # extensions
       attr_accessor :x_orcid, :x_author_id, :x_author_api_url, :x_raw_affiliation_string, :x_date_birth
 
-      # ignore Namae fields
-      def nick=(*) end
-
-      def title=(*) end
-      def appellation=(*) end
-
       # @!attribute x_affiliations
       # @return [Array<Affiliation>]
       attr_reader :x_affiliations
@@ -161,6 +155,13 @@ module Format
           end
         end
       end
+
+      # ignore Namae fields
+      def nick=(*) end
+      def title=(*) end
+      def appellation=(*) end
+      # other fields to be ignores
+      def is_corresponding=(*) end
 
       # Returns family and given names and tries to parse them from the literal data if they don't exist
       # TO DO:
@@ -263,8 +264,7 @@ module Format
 
       # @!attribute validated_by
       # @return [Hash<{String => Item}>
-      attr_accessor :same_as, :times_cited, :validated_by, :metadata_source, :metadata_id, :metadata_api_url,
-                    :reference_data_source, :cited_by_api_url, :container_id, :generated_keywords
+      attr_accessor :validated_by
 
       # Contains a precalculated iso4-abbreviated title that can be used to compare records
       # @!attribute
@@ -275,6 +275,16 @@ module Format
       # @!attribute
       # @return [String]
       attr_accessor :iso4_container_title
+
+      # Stores the originally extracted data which was replaced during reconciliation/linking
+      # @!attribute
+      # @return [String]
+      attr_accessor :original_data
+
+      # undocumented attributes
+      attr_accessor :same_as, :times_cited, :metadata_source, :metadata_id, :metadata_api_url,
+                    :reference_data_source, :cited_by_api_url, :container_id, :generated_keywords
+
     end
 
     # A CSL-JSON item.
@@ -310,7 +320,7 @@ module Format
         @isbn = []
         @issn = []
         @author = []
-        @editor =[]
+        @editor = []
         super(data, accessor_map: ACCESSOR_MAP.merge(accessor_map))
       end
 
@@ -319,7 +329,7 @@ module Format
       # @!attribute id
       # @return [String]
       def id
-        doi || isbn&.first || citation_key ||
+        doi || (isbn && Array(isbn).first) || citation_key ||
           creator_year_title(downcase: true).compact.join('_').gsub(%r{[^_\p{L}\p{N}]}, '')[..30]
       end
 
@@ -536,6 +546,11 @@ module Format
       def to_s
         creator, year, title = creator_year_title
         "#{creator} (#{year}), #{title}"
+      end
+
+      # @return [String]
+      def guess_type
+        self.class.guess_type(self)
       end
 
       # @param [Item] item
