@@ -329,7 +329,7 @@ module Format
       # @!attribute id
       # @return [String]
       def id
-        doi || (isbn && Array(isbn).first) || citation_key ||
+        doi || (isbn && Array(isbn).first) || citation_key || custom.metadata_id ||
           creator_year_title(downcase: true).compact.join('_').gsub(%r{[^_\p{L}\p{N}]}, '')[..30]
       end
 

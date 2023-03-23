@@ -152,5 +152,5 @@ module Workflow
   end
 end
 
-Workflow::Path.base = File.realpath(File.join(File.dirname($PROGRAM_NAME), 'data'))
-Workflow::Path.tmp = File.realpath(File.join(File.dirname($PROGRAM_NAME), 'tmp'))
+Workflow::Path.base = './data'
+Workflow::Path.tmp = './tmp'

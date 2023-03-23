@@ -11,22 +11,23 @@ class Cache
   # @param [Object] data
   # @param [Boolean] use_literal
   # @param [String] prefix
-  def initialize(identifier, use_literal: false, prefix: '')
+  def initialize(identifier, use_literal: false, prefix: '', mode: MODE_JSON)
     @identifier = identifier
     @use_literal = use_literal
     @prefix = prefix
+    @mode = mode
   end
 
   def load
-    Cache.load(@identifier, use_literal: @use_literal, prefix: @prefix)
+    Cache.load(@identifier, use_literal: @use_literal, prefix: @prefix, mode: @mode)
   end
 
   def save(data)
-    Cache.save(@identifier, data, use_literal: @use_literal, prefix: @prefix)
+    Cache.save(@identifier, data, use_literal: @use_literal, prefix: @prefix, mode: @mode)
   end
 
   def delete
-    Cache.delete(@identifier, data, use_literal: @use_literal, prefix: @prefix)
+    Cache.delete(@identifier, use_literal: @use_literal, prefix: @prefix, mode: @mode)
   end
 
   # @param [Object] identifier
@@ -75,8 +76,14 @@ class Cache
     data
   end
 
-  def self.delete(identifier, data, use_literal: false, prefix: '', mode: MODE_JSON)
-    File.delete(cache_path(identifier, use_literal:, prefix:, mode:))
+  def self.delete(identifier, use_literal: false, prefix: '', mode: MODE_JSON)
+    cp = cache_path(identifier, use_literal:, prefix:, mode:)
+    if File.exist? cp
+      File.delete(cp)
+    else
+      puts "Cache '#{cp}' does not exist".colorize(:red)
+    end
+
   end
 
   # @param [Object] identifier
@@ -84,12 +91,12 @@ class Cache
   # @param [String] prefix
   # @return [String]
   def self.cache_path(identifier, use_literal: false, prefix: '', mode: MODE_JSON)
-    file_name = if use_literal && identifier.is_a?(String)
-                  identifier.to_s
-                elsif mode == MODE_JSON
-                  "#{prefix}#{Digest::MD5.hexdigest(identifier.to_s)}.json"
+    file_name = prefix
+    file_name += use_literal && identifier.is_a?(String) ? identifier.to_s : Digest::MD5.hexdigest(identifier.to_s)
+    file_name += if mode == MODE_JSON
+                   '.json'
                 elsif mode == MODE_MARSHAL
-                  "#{prefix}#{Digest::MD5.hexdigest(identifier.to_s)}.bin"
+                  '.bin'
                 else
                   raise "Invalid mode"
                 end

@@ -7,7 +7,46 @@ module Datasource
 
     class << self
       @base_url = 'https://openlibrary.org'
-      
+
+      # @return [String]
+      def id
+        'openlibrary'
+      end
+
+      # @return [String]
+      def name
+        'Data from openlibrary.org - not implemented yet'
+      end
+
+      # @return [Boolean]
+      def enabled?
+        false
+      end
+
+      # @return [Boolean]
+      def provides_metadata?
+        true
+      end
+
+      # @return [Array<String>]
+      def metadata_types
+        [Format::CSL::BOOK, Format::CSL::CHAPTER]
+      end
+
+      def languages
+        ['de']
+      end
+
+      # @return [Boolean]
+      def provides_citation_data?
+        false
+      end
+
+      # @return [Boolean]
+      def provides_affiliation_data?
+        true
+      end
+
       def query(name, title, date)
         raise 'must be reimplemented'
         # name = Datasource.author_name_family(name)

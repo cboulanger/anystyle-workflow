@@ -14,7 +14,7 @@ module Datasource
       end
 
       # @return [String]
-      def name
+      def label
         'Data from csl-json files produced by a postgresql query on fiz-karlsruhe.de'
       end
 

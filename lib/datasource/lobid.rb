@@ -10,10 +10,7 @@ module Datasource
 
     HTTPX::Plugins.load_plugin(:follow_redirects)
     HTTPX::Plugins.load_plugin(:retries)
-    HTTPX::Plugins.load_plugin(:rate_limiter)
 
-    @batch_size = 100
-    @base_url = 'https://lobid.org'
     @base_api_url = 'https://lobid.org/resources/search?'
     @headers = {
       'Accept' => 'application/json'
@@ -30,7 +27,7 @@ module Datasource
       end
 
       # @return [String]
-      def name
+      def label
         'Data from lobid.org'
       end
 
@@ -47,6 +44,11 @@ module Datasource
       # @return [Array<String>]
       def metadata_types
         [Format::CSL::BOOK, Format::CSL::CHAPTER]
+      end
+
+      # @return [Array<String>]
+      def languages
+        ['de']
       end
 
       # @return [Boolean]
@@ -122,8 +124,8 @@ module Datasource
         super
       end
 
-      def type=(type)
-        super Format::CSL::BOOK
+      def type
+        Format::CSL::BOOK
       end
 
       def publication=(p)

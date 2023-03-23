@@ -74,6 +74,7 @@ GEM
     parallel (1.22.1)
     parser (3.2.1.0)
       ast (~> 2.4.1)
+    pg (1.4.6)
     pycall (1.4.2)
     racc (1.6.2)
     rainbow (3.1.1)
@@ -147,6 +148,7 @@ DEPENDENCIES
   namae (~> 1.1)
   neo4j-ruby-driver (~> 4.4.0.alpha.6)
   nokogiri (~> 1.14)
+  pg
   pycall (~> 1.4)
   require_all (~> 3.0)
   rubocop

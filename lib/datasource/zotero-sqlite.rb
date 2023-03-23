@@ -15,7 +15,7 @@ module Datasource
       end
 
       # @return [String]
-      def name
+      def label
         'Data from querying zotero.sqlite'
       end
 

@@ -10,7 +10,7 @@ module Datasource
       end
 
       # @return [String]
-      def name
+      def label
         'Reference data from AnyStyle-extracted CSL-JSON files'
       end
 

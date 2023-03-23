@@ -27,7 +27,7 @@ module Datasource
       end
 
       # @return [String]
-      def name
+      def label
         'Data from export files retrieved from dimensions.ai'
       end
 

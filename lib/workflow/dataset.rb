@@ -486,10 +486,12 @@ module Workflow
       end
       type_supported = false
       Datasource.metadata_providers.each do |provider|
-        if provider.metadata_types.include?(ref.type || ref.guess_type)
+        lang = guess_language(ref.title).iso_639_1
+        if provider.metadata_types.include?(ref.type || ref.guess_type) &&
+            (provider.languages.empty? || provider.languages.include?(lang))
           puts "     - #{provider.id}: looking up #{ref.to_s[..80]}" if @options.verbose
         else
-          puts "     - #{provider.id}: no support for type #{ref.type}" if @options.verbose
+          puts "     - #{provider.id}: no support for type #{ref.type} and/or language #{lang}" if @options.verbose
           next
         end
 
@@ -499,6 +501,7 @@ module Workflow
           found_ref = provider.lookup(ref)
         rescue StandardError => e
           puts e.message.to_s.colorize(:red)
+          puts e.backtrace.join("\n").colorize(:red) if @options.verbose
           next
         end
         if found_ref.nil?

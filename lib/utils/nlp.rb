@@ -45,21 +45,32 @@ module Utils
       'yi' => 'yiddish'
     }.freeze
 
+    Language = Struct.new(:literal, :iso_639_1, keyword_init: true)
+
+    # Returns a two-letter language code (see [LANGUAGES])
     # @param [String] text
-    # @param [Integer] ratio
-    # @param [Boolean] topics
-    # @param [Array] stopword_files
-    # @return [Array<String, Array, String>] An array of [abstract, keywords, language]
-    def summarize(text, ratio: 50, topics: false, stopword_files: [])
+    # @return [Language]
+    def guess_language(text)
       if @languages.nil?
         # we require this inline because summarize doesn't compile in all environments
         require 'summarize'
         require 'scylla'
         @languages = LANGUAGES.invert
       end
-      skylla_lang = text.language
-      language = @languages[skylla_lang]
-      raise "Language '#{skylla_lang}' is not supported by the auto-summarizer" if language.nil?
+      literal = text.language
+      Language.new(literal:, iso_639_1: @languages[literal])
+    end
+
+    # @param [String] text
+    # @param [Integer] ratio
+    # @param [Boolean] topics
+    # @param [Array] stopword_files
+    # @return [Array<String, Array, String>] An array of [abstract, keywords, language]
+    def summarize(text, ratio: 50, topics: false, stopword_files: [])
+      l = guess_language(text)
+      lang = l.literal
+      language = l.iso_639_1
+      raise "Language '#{lang}' is not supported by the auto-summarizer" if language.nil?
 
       # remove literal phrases or those which match a regular expressions
       stopword_files.each do |file_path|

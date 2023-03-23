@@ -19,7 +19,7 @@ module Export
 
   # @return [String]
   def self.list
-    ids.map { |k| "#{k.id.ljust(20)}#{k.name}" }.sort.join("\n")
+    ids.map { |k| "#{k.id.ljust(20)}#{k.label}" }.sort.join("\n")
   end
 
   # Abstract exporter class, implementations must inherit from this class in order to be found

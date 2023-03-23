@@ -16,12 +16,12 @@ module Datasource
       constants
         .map { |c| const_get c }
         .select { |p| p < Datasource && p.enabled? }
-        .sort {|a,b| a.id <=> b.id}
+        .sort { |a, b| a.id <=> b.id }
     end
 
     # @return [String]
     def list
-      providers.map { |p| "#{p.id.ljust(20)}#{p.name}" }.sort.join("\n")
+      providers.map { |p| "#{p.id.ljust(20)}#{p.label}" }.sort.join("\n")
     end
 
     # @return [Array<Datasource>]
@@ -52,7 +52,7 @@ module Datasource
       end
 
       # @return [String]
-      def name
+      def label
         raise 'Must be implemented by subclass'
       end
 
@@ -71,6 +71,11 @@ module Datasource
         raise 'Must be implemented by subclass'
       end
 
+      # @return [Array<String>]
+      def languages
+        []
+      end
+
       # @return [Boolean]
       def provides_citation_data?
         raise 'Must be implemented by subclass'
@@ -83,32 +88,31 @@ module Datasource
 
       attr_accessor :verbose
 
+      Options = Struct.new(:include_references, :include_abstract)
+
+      # Import an item from the datasource, identified by a persistent identifier, which can be anything
+      # (ISBN, DOI, or other ) as long as the datasource knows how to handle it
+      # @param [String] _id
+      # @param [Options] _options
       # @return [Array<Format::CSL::Item>]
+      def import(_id, _options = nil)
+        raise 'Method must be implemented by subclass'
+      end
+
+      # Searches for items that are similar to the given item or
+      # match the given string.
+      # @param [Format::CSL::Item, String] _item_or_string
+      # @return [Array<Format::CSL::Item>, Format::CSL::Item]
+      def lookup(_item_or_string)
+        raise 'Method must be implemented by subclass'
+      end
+
+      # @return [Array<Format::CSL::Item>]
+      # @deprecated
       def import_items(item_ids, include_references: false, include_abstract: false)
         raise 'Method must be implemented by subclass'
       end
     end
-  end
-
-  # Given an id and a list of datasources, return an array of results from these sources
-  # in CSL-JSON format
-  # @deprecated
-  # @return Array
-  def import_by_identifier(id, verbose:, datasources: [])
-    all_items = []
-    datasources.map do |ds|
-      resolver = by_id(ds)
-      if id =~ /^10./ && resolver.respond_to?(:import_items)
-        resolver.verbose = verbose
-        doi = id.sub('_', '/')
-        found_items = resolver.import_items([doi], include_references: true, include_abstract: true)
-        all_items.append(found_items.first) if found_items.length.positive?
-        puts ' - Data imported.' if verbose
-      elsif verbose
-        puts " - Identifier '#{id}' cannot be resolved by #{ds}."
-      end
-    end
-    all_items
   end
 
   # @deprecated

@@ -10,6 +10,7 @@ require 'erb'
 
 module Datasource
   class Crossref < ::Datasource::Datasource
+
     TYPES_MAP = {
       'journal-article' => Format::CSL::ARTICLE_JOURNAL
     }.freeze
@@ -18,14 +19,13 @@ module Datasource
 
     HTTPX::Plugins.load_plugin(:follow_redirects)
     HTTPX::Plugins.load_plugin(:retries)
-    HTTPX::Plugins.load_plugin(:rate_limiter)
+
     @headers = {
       'Accept' => 'application/json',
       'User-Agent' => "https://github.com/cboulanger/anystyle-workflow mailto:#{@email}"
     }
     @http = HTTPX.plugin(:follow_redirects, follow_insecure_redirects: true)
                  .plugin(:retries, retry_after: 2, max_retries: 3)
-                 .plugin(:rate_limiter)
                  .with(timeout: { operation_timeout: 30 })
                  .with(headers: @headers)
 
@@ -41,7 +41,7 @@ module Datasource
       end
 
       # @return [String]
-      def name
+      def label
         'Data from api.crossref.org'
       end
 

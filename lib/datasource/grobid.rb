@@ -16,7 +16,7 @@ module Datasource
       end
 
       # @return [String]
-      def name
+      def label
         'Data from TEI files produced using GROBID'
       end
 
