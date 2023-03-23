@@ -132,12 +132,15 @@ module Workflow
         File.join(base, '3-grobid-tei')
       end
 
+      def datasets
+        File.join(base, '5-datasets')
+      end
+
       # path to the directory containing exported data
       # @return [String]
       def export
         File.join(base, '5-export')
       end
-
 
       # path to the directory containing exported data
       # @return [String]
@@ -148,6 +151,8 @@ module Workflow
       def cache
         File.join(tmp, 'cache')
       end
+
+
     end
   end
 end

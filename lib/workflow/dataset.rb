@@ -286,16 +286,21 @@ module Workflow
     # @param [String] dataset_name
     # @return [Workflow::Dataset]
     def self.load(dataset_name, options: nil)
-      dataset_path = dataset_path(dataset_name)
-      raise "Dataset '#{dataset_name}' does not exist." unless File.exist? dataset_path
+      raise "Dataset '#{dataset_name}' does not exist." unless exist? dataset_name
 
+      dataset_path = dataset_path(dataset_name)
       # @type [Array<Format::CSL::Item]
       items = Marshal.load(File.binread(dataset_path))
       new(items, options:, name: dataset_name)
     end
 
+    def self.exist? (dataset_name)
+      dataset_path = dataset_path(dataset_name)
+      File.exist? dataset_path
+    end
+
     def self.dataset_path(dataset_name)
-      File.join(Workflow::Path.tmp, "#{dataset_name}.dataset")
+      File.join(Workflow::Path.datasets, "#{dataset_name}.dataset")
     end
 
     def save(dataset_name)
