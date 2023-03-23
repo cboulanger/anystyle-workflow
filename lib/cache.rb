@@ -18,10 +18,13 @@ class Cache
     @mode = mode
   end
 
+  # @return [Object] The cached data
   def load
     Cache.load(@identifier, use_literal: @use_literal, prefix: @prefix, mode: @mode)
   end
 
+  # @param [Object] data
+  # @return [Object] The data that was cached
   def save(data)
     Cache.save(@identifier, data, use_literal: @use_literal, prefix: @prefix, mode: @mode)
   end

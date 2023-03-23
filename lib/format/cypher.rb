@@ -50,9 +50,10 @@ module Format
 
         # TO DO: remove duplicates, use only first affiliation for now
         affs = [creator.x_affiliations[0]]
-        affs.each_with_index do |affiliation, i_index|
+        affs.each_with_index do |a, i_index|
           i_var = "i#{index + 1}#{i_index + 1}"
-          institution = (affiliation.institution || affiliation.literal.to_s[..50] || 'unknown')
+          a.institution = a.institution.first if a.institution.is_a? Array
+          institution = (a.institution || a.literal.to_s[..50] || 'unknown')
                           .downcase
                           .gsub('university', 'univ ')
                           .gsub('college', 'coll ')
@@ -66,7 +67,7 @@ module Format
             <<~CYPHER
               MERGE (#{i_var}:Institution {name: #{JSON.dump institution}})
               ON CREATE SET
-                #{i_var}.country = #{JSON.dump affiliation.country&.downcase || ''}
+                #{i_var}.country = #{JSON.dump a.country&.downcase || ''}
               MERGE (#{a_var})-[:AFFILIATED_WITH]->(#{i_var})
           CYPHER
           )

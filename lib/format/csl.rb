@@ -142,9 +142,9 @@ module Format
 
       # @param [Array<Hash|Affiliation>] affiliations
       def x_affiliations=(affiliations)
-        raise 'Value must be an array' unless affiliations.is_a?(Array)
+        raise 'Value must be an array' unless affiliations.is_a?(Array) || affiliations.nil?
 
-        @x_affiliations = affiliations.map do |affiliation|
+        @x_affiliations = affiliations&.map do |affiliation|
           case affiliation
           when Affiliation
             affiliation

@@ -123,4 +123,9 @@ def test10
   puts JSON.dump(Datasource::Lobid.lookup(item))
 end
 
-test10
+def test11
+  Datasource::WosKb.verbose =true
+  pp Datasource::WosKb.items_by_autor "Ehrlich, Eugen"
+end
+
+test11
