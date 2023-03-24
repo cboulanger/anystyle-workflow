@@ -303,10 +303,16 @@ module Workflow
       File.join(Workflow::Path.datasets, "#{dataset_name}.dataset")
     end
 
-    def save(dataset_name)
+    # Saves the dataset to disk
+    # @param [String, nil] as Optional name to save the dataset to (for example, to make a copy)
+    def save(as: nil)
+      dataset_name = as || @name
+      raise 'No dataset name' if dataset_name.nil?
+
       add_missing_references
       add_missing_affiliations
       File.binwrite(Dataset.dataset_path(dataset_name), Marshal.dump(@items))
+      self
     end
 
     protected

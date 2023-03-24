@@ -336,9 +336,9 @@ if ARGV.include? 'generate-dataset'
              .map { |f| File.basename(f, '.json') }
              .map { |f| f.start_with?('10.') ? f.sub('_', '/') : f }
         end
-  dataset = Workflow::Dataset.new(options:)
+  dataset = Workflow::Dataset.new(name: dataset_name, options:)
   dataset.import(ids[..limit], limit:)
-  dataset.save(dataset_name)
+  dataset.save
   puts "Saved #{dataset.length} items to dataset '#{dataset_name}'. You can now use export-dataset to export it to the desired format."
 end
 

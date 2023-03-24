@@ -82,7 +82,8 @@ module Datasource
                 .map { |id| id.start_with?('WOS') ? id : "WOS:#{id}"}
         params = [PG::TextEncoder::Array.new.encode(ids)]
         puts "  - #{id}: Downloading entries of or citing '#{author_str}'..." if verbose
-        exec_params(sql_get_csl_item_data, params, use_cache: false, is_json: true)
+        exec_params(sql_get_csl_item_data, params, is_json: true)
+          .map { |data| Format::CSL::Item.new data }
       end
 
       def sql_find_by_author

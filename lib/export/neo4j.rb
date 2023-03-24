@@ -15,6 +15,10 @@ module Export
       'Neo4j exporter'
     end
 
+    def self.instruction(command, message=nil)
+      Workflow::Dataset::Instruction.new(type: 'cypher', command:, message:)
+    end
+
     def connect
       raise 'Missing database URL' if @target.nil?
 

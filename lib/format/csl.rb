@@ -447,7 +447,7 @@ module Format
       end
 
       def url
-        @url || (@doi && "https://doi.org/#{@doi}") || @custom.metadata_api_url || ''
+        @url || (@doi && (@doi.start_with?('10.') ? "https://doi.org/#{@doi}" : @doi)) || @custom.metadata_api_url || ''
       end
 
       attr_accessor :authority, :citation_number, :doi, :isbn, :issn, :abstract, :citation_key,

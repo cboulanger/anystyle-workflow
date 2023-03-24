@@ -27,10 +27,10 @@ module Format
         <<~CYPHER
           MERGE (w:Work {id: "#{@item.id}"})
               ON CREATE SET
-                w.title = #{JSON.dump @item.title&.downcase || 'no title'},
+                w.title = #{JSON.dump @item.title&.downcase || 'no_title'},
                 w.year = #{@item.issued&.to_year || 0},
                 w.type = "#{@item.type}",
-                w.label = #{JSON.dump @item.to_s},
+                w.display_name = #{JSON.dump @item.to_s.downcase},
                 w.url = "#{@item.url}"
       CYPHER
       )
@@ -42,6 +42,8 @@ module Format
         output.append(
           <<~CYPHER
             MERGE (#{a_var}:Author {family: #{JSON.dump family}, given:#{JSON.dump given}})
+              ON CREATE SET
+                #{a_var}.display_name = "#{family}, #{given}"
             MERGE (#{a_var})-[:CREATOR_OF]->(w)
         CYPHER
         )

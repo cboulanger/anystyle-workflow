@@ -167,6 +167,11 @@ module Datasource
         results
       end
 
+      def items_by_filter(filter)
+        get_multiple_entities('work', filter)
+          .map { |data| Item.new data }
+      end
+
       # Given an array of DOIs, return their metadata in CSL-JSON format
       # @param [Array] dois
       # @return [Array<Item>]
