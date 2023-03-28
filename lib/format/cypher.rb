@@ -11,8 +11,7 @@ module Format
         'CREATE CONSTRAINT venue_id IF NOT EXISTS ON (v:Venue) ASSERT v.id IS UNIQUE',
         'CREATE INDEX work_title IF NOT EXISTS FOR (w:Work) ON (w.title)',
         'CREATE INDEX venue_name IF NOT EXISTS FOR (v:Venue) ON (v.name)',
-        'CREATE INDEX author_family IF NOT EXISTS FOR (a:Author) ON (a.family)',
-        'CREATE INDEX author_given IF NOT EXISTS FOR (a:Author) ON (a.given)'
+        'CREATE INDEX author_display_name IF NOT EXISTS FOR (a:Author) ON (a.display_name)'
       # 'CALL db.awaitIndexes();'
       ]
     end
@@ -31,6 +30,7 @@ module Format
                 w.year = #{@item.issued&.to_year || 0},
                 w.type = "#{@item.type}",
                 w.display_name = #{JSON.dump @item.to_s.downcase},
+                w.container = #{JSON.dump @item.container_title.downcase},
                 w.url = "#{@item.url}"
       CYPHER
       )

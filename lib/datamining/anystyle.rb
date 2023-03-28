@@ -4,6 +4,9 @@ require 'anystyle'
 require 'rexml'
 
 module Datamining
+
+  REFERENCE_LABEL_REGEX = /^(ref|bib|intext)/
+
   class AnyStyle
     include ::AnyStyle::PDFUtils
 
@@ -31,11 +34,17 @@ module Datamining
     # Given a path to a .ttx file, return unparsed references as a newline-separated text
     # @param [String] file_path
     def ttx_to_refs(file_path)
-      File.read(file_path)
-          .split("\n")
-          .select { |line| line.start_with? 'ref' }
-          .map { |line| line[line.index('|')+1..]&.strip }
-          .join("\n")
+      in_ref = false
+      File.read(file_path).split("\n").reduce([]) do |refs, line|
+        label, text = line.split("|", 2)
+        if label.match(REFERENCE_LABEL_REGEX)
+          in_ref = true
+        elsif !label.strip.empty?
+          in_ref = false
+        end
+        refs << text.strip if in_ref
+        refs
+      end.join("\n")
     end
 
     # Given the path to a .txt file containing the raw text of the document, return
@@ -47,9 +56,10 @@ module Datamining
 
     # Given the path to a .txt file containing the raw text of the document, return
     # an xml-annotated version that can be saved as an '.xml' file
+    # This isn't working - need to file an issue
     # @param [String] file_path
     def doc_to_xml(file_path)
-      ::AnyStyle.finder.find(file_path, format: :wapiti)[0].to_xml()
+      #::AnyStyle.finder.find(file_path, format: :wapiti)[0].to_xml()
     end
 
     # Given the unparsed references as a newline-separated text, return the tagged

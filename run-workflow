@@ -40,6 +40,8 @@ HELP = \
                                            overwrite output files with existing gold files of the same
                                            name to improve quality
          --from-(text|pdf) /to/text/dir'   Use either text or pdf as source - must be last argument
+         [--prefix dir/pre-]               Prefix for all output files, can be a directory, which is created, and/or
+                                           a file prefix
          [--limit 10]                      Maximum number of entries - for testing
 
      stats [options] <type>                Generate a CSV file with data on the extraction results and on other
@@ -128,6 +130,9 @@ if ARGV.include? 'extract'
   arg_name = '--model-dir'
   model_dir = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
 
+  arg_name = '--prefix'
+  prefix = ARGV[(ARGV.index(arg_name) + 1)] if ARGV.include? arg_name
+
   arg_name = '--limit'
   limit = ARGV[(ARGV.index(arg_name) + 1)].to_i if ARGV.include? arg_name
 
@@ -139,6 +144,7 @@ if ARGV.include? 'extract'
         parser_gold_dir:  #{parser_gold_dir}
         finder_gold_dir:  #{finder_gold_dir}
         model_dir:        #{model_dir}
+        prefix:           #{prefix}
       TEXT
   end
 
@@ -150,9 +156,10 @@ if ARGV.include? 'extract'
 
   Workflow::Extraction.doc_to_csl_json(
     source_dir: text_dir,
+    model_dir:,
     overwrite: ARGV.include?('--overwrite'),
     output_intermediaries: ARGV.include?('--write-files'),
-    model_dir:,
+    prefix:,
     parser_gold_dir:,
     finder_gold_dir:,
     verbose: ARGV.include?('--verbose'),

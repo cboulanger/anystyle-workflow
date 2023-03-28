@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+require 'fileutils'
 
 module Workflow
   class Extraction
@@ -25,6 +26,13 @@ module Workflow
         end
       end
 
+      def mkdir(file_path)
+        unless Dir.exist? File.dirname(file_path)
+          FileUtils.mkdir_p File.dirname(file_path)
+        end
+        file_path
+      end
+
       # Extracts reference information from the raw text of the documents and writes the corresponding output files
       # @param [String] source_dir Defaults to data/2-txt
       # @param [Boolean] output_intermediaries If true, write intermediary file formats to disk for debugging purposes, will slow down extraction considerably
@@ -32,13 +40,17 @@ module Workflow
       # @param [String, nil] model_dir
       # @param [String, nil] parser_gold_dir
       # @param [String, nil] finder_gold_dir
-      def doc_to_csl_json(limit:, source_dir: Path.txt,
+      # @param [Integer, nil] limit
+      # @param [String, nil] prefix The prefix is added to the output files. can contain a directory path
+      def doc_to_csl_json(source_dir: Path.txt,
+                          model_dir: Path.models,
                           overwrite: false,
                           output_intermediaries: false,
-                          model_dir: Path.models,
                           parser_gold_dir: nil,
                           finder_gold_dir: nil,
-                          verbose: false)
+                          prefix: '',
+                          verbose: false,
+                          limit:nil)
         finder_model_path = File.join model_dir, 'finder.mod'
         parser_model_path = File.join model_dir, 'parser.mod'
         anystyle = Datamining::AnyStyle.new(finder_model_path:, parser_model_path:)
@@ -58,45 +70,47 @@ module Workflow
           end
 
           # these are the main files we need for linking and evaluation
-          csl_file = File.join Path.csl, "#{file_name}.json"
-          anystyle_json_file = File.join Path.anystyle_json, "#{file_name}.json"
+          csl_path = mkdir(File.join Path.csl, "#{prefix}#{file_name}.json")
+          anystyle_json_path = mkdir(File.join Path.anystyle_json, "#{prefix}#{file_name}.json")
 
           # we can skip all remaining steps if they exist and we don't need the intermediaries
-          if File.exist?(csl_file) && File.exist?(anystyle_json_file) && !overwrite && !output_intermediaries
+          if File.exist?(csl_path) && File.exist?(anystyle_json_path) && !overwrite && !output_intermediaries
             puts ' - Output files exist, skipping...' if verbose
             next
           end
 
-          # get untagged references from gold if exists or via finder parsing
-          finder_gold_path = !finder_gold_dir.nil? && File.join(finder_gold_dir, "#{file_name}.ttx")
+          # get untagged references from gold if exists, otherwise run finder parsing
+          finder_gold_path = !finder_gold_dir.nil? && mkdir(File.join(finder_gold_dir, "#{prefix}#{file_name}.ttx"))
           refs_txt = if finder_gold_path && File.exist?(finder_gold_path)
                        puts " - Using finder gold from #{finder_gold_path}" if verbose
                        anystyle.ttx_to_refs(finder_gold_path)
                      else
-                       anystyle.doc_to_refs(file_path)
+                       # anystyle.doc_to_refs(file_path)
+                       # parsing the ttx so that we can use alternative reference labels
+                       ttx_path = mkdir(File.join(Path.ttx, "#{prefix}#{file_name}.ttx"))
+                       unless File.exist?(ttx_path) && !overwrite
+                         ttx = anystyle.doc_to_ttx file_path
+                         puts " - Writing finder .ttx to #{ttx_path}" if verbose
+                         File.write ttx_path, ttx
+                       end
+                       anystyle.ttx_to_refs(ttx_path)
                      end
 
-          # write the intermediary .ttx file and ref-txt files
+          # write the intermediary files
           if output_intermediaries
-            refs_path = File.join(Path.refs, File.basename(file_path))
+            refs_path = mkdir(File.join(Path.refs, "#{prefix}#{file_name}.txt"))
             puts " - Writing unparsed references to #{refs_path}" if verbose
             File.write(refs_path, refs_txt) unless File.exist?(refs_path) && !overwrite
-            ttx_path = File.join(Path.ttx, "#{file_name}.ttx")
-            unless File.exist?(ttx_path) && !overwrite
-              ttx = anystyle.doc_to_ttx file_path
-              puts " - Writing finder .ttx to #{ttx_path}" if verbose
-              File.write(ttx_path, ttx)
-            end
-            finder_xml_path = File.join(Path.anystyle_finder_xml, "#{file_name}.xml")
-            unless File.exist?(finder_xml_path) && !overwrite
-              xml = anystyle.doc_to_xml file_path
-              puts " - Writing finder .xml to #{finder_xml_path}" if verbose
-              File.write(finder_xml_path, xml)
-            end
+            # finder_xml_path = File.join(Path.anystyle_finder_xml, "#{file_name}.xml")
+            # unless File.exist?(finder_xml_path) && !overwrite
+            #   xml = anystyle.doc_to_xml file_path
+            #   puts " - Writing finder .xml to #{finder_xml_path}" if verbose
+            #   File.write(finder_xml_path, xml)
+            # end
           end
 
           # get xml from gold if a corresponding file exists, if not, by labelling the raw references
-          parser_gold_path = !parser_gold_dir.nil? && File.join(parser_gold_dir, "#{file_name}.xml")
+          parser_gold_path = !parser_gold_dir.nil? && mkdir(File.join(parser_gold_dir, "#{prefix}#{file_name}.xml"))
           xml = if parser_gold_path && File.exist?(parser_gold_path)
                   puts " - Using parser gold from #{parser_gold_path}" if verbose
                   File.read(parser_gold_path)
@@ -106,7 +120,7 @@ module Workflow
 
           # write the intermediary .xml file
           if output_intermediaries
-            xml_path = File.join(Path.anystyle_parser_xml, "#{file_name}.xml")
+            xml_path = mkdir(File.join(Path.anystyle_parser_xml, "#{prefix}#{file_name}.xml"))
             unless File.exist?(xml_path) && !overwrite
               puts " - Writing xml to #{xml_path}" if verbose
               File.write(xml_path, xml)
@@ -117,18 +131,18 @@ module Workflow
           ds = anystyle.xml_to_wapiti xml
 
           # anystyle json representation of all found references
-          unless File.exist?(anystyle_json_file) && !overwrite
-            puts " - Writing anystyle json file to #{anystyle_json_file}" if verbose
+          unless File.exist?(anystyle_json_path) && !overwrite
+            puts " - Writing anystyle json file to #{anystyle_json_path}" if verbose
             anystyle_json = anystyle.wapiti_to_hash ds
-            File.write anystyle_json_file, JSON.pretty_generate(anystyle_json)
+            File.write anystyle_json_path, JSON.pretty_generate(anystyle_json)
           end
 
           # csl
           csl_items = anystyle.wapiti_to_csl ds
           selected, rejected = anystyle.filter_invalid_csl_items csl_items
-          puts " - Writing valid csl to #{csl_file}" if verbose
-          File.write csl_file, JSON.pretty_generate(selected) unless !overwrite && File.exist?(csl_file)
-          csl_rejected_file = File.join(Path.csl_rejected, "#{file_name}.json")
+          puts " - Writing valid csl to #{csl_path}" if verbose
+          File.write csl_path, JSON.pretty_generate(selected) unless !overwrite && File.exist?(csl_path)
+          csl_rejected_file = mkdir(File.join(Path.csl_rejected, "#{prefix}#{file_name}.json"))
           unless !overwrite && File.exist?(csl_rejected_file)
             puts " - Writing rejected csl json to #{csl_rejected_file}" if verbose
             File.write csl_rejected_file, JSON.pretty_generate(rejected)

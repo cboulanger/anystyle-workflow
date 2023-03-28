@@ -35,11 +35,22 @@ module Datasource
       end
 
       # @return [Array<Item>]
+      # @param [Array<String>] ids
       def import_items(ids, include_references: false, include_abstract: false)
         ids.map do |id|
-          # use crossref item for metadata
-          Crossref.verbose = self.verbose
-          data = Crossref.import_items([id], include_references: false).first.to_h
+          if id.start_with? '10.'
+            # use crossref item for metadata
+            Crossref.verbose = self.verbose
+            data = Crossref.import_items([id], include_references: false).first.to_h
+          elsif (m = id.match(/(.+) \((\d+)\) (.+)/))
+            data = {
+              author: {family: m[1]},
+              issued: m[2],
+              title: m[3]
+            }
+          else
+            raise "Cannot handle id '#{id}'"
+          end
           item = Item.new(data)
           file_path = File.join(::Workflow::Path.csl, "#{Workflow::Utils.to_filename(id)}.json")
           next unless File.exist?(file_path)
