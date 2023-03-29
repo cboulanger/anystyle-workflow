@@ -55,6 +55,12 @@ module Datasource
         true
       end
 
+      # The type of identifiers that can be used to import data
+      # @return [Array<String>]
+      def id_types
+        [::Datasource::DOI]
+      end
+
       # @return [Array<String>]
       def metadata_types
         [Format::CSL::ARTICLE_JOURNAL, Format::CSL::CHAPTER]
@@ -116,7 +122,7 @@ module Datasource
       end
 
       # @return [Array<Item>]
-      def import_items(dois, include_references: true, include_abstract: true)
+      def import_items(dois, include_references: true, include_abstract: true, prefix: '')
         raise 'dois must be Array' unless dois.is_a? Array
 
         items = Cache.load(dois)

@@ -3,7 +3,15 @@
 # or query locally stored export files from these sources.
 module Datasource
 
+  # The type of identifiers that a datasource accepts to identify entities that it contains
+  IDENTIFIERS = [
+    DOI = "doi",
+    ISBN = "isbn",
+    FILE_NAME = "file"
+  ]
+
   class << self
+
     def by_id(id)
       klass = providers.select { |k| k.id == id }.first
       raise "No datasource with id '#{id}' exists." if klass.nil?
@@ -15,7 +23,7 @@ module Datasource
     def providers
       constants
         .map { |c| const_get c }
-        .select { |p| p < Datasource && p.enabled? }
+        .select { |p| p.is_a?(Class) &&  p < Datasource && p.enabled? }
         .sort { |a, b| a.id <=> b.id }
     end
 
@@ -66,6 +74,12 @@ module Datasource
         raise 'Must be implemented by subclass'
       end
 
+      # The type of identifiers that can be used to import data
+      # @return [Array<String>]
+      def id_types
+        raise 'Must be implemented by subclass'
+      end
+
       # @return [Array<String>]
       def metadata_types
         raise 'Must be implemented by subclass'
@@ -109,7 +123,7 @@ module Datasource
 
       # @return [Array<Format::CSL::Item>]
       # @deprecated
-      def import_items(item_ids, include_references: false, include_abstract: false)
+      def import_items(item_ids, include_references: false, include_abstract: false, prefix: '')
         raise 'Method must be implemented by subclass'
       end
     end

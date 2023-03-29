@@ -34,6 +34,12 @@ module Datasource
         [Format::CSL::ARTICLE_JOURNAL, Format::CSL::CHAPTER, Format::CSL::BOOK, Format::CSL::COLLECTION]
       end
 
+      # The type of identifiers that can be used to import data
+      # @return [Array<String>]
+      def id_types
+        [::Datasource::DOI]
+      end
+
       # @return [Boolean]
       def provides_citation_data?
         false

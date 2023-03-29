@@ -34,6 +34,12 @@ module Datasource
         []
       end
 
+      # The type of identifiers that can be used to import data
+      # @return [Array<String>]
+      def id_types
+        [::Datasource::DOI]
+      end
+
       # @return [Boolean]
       def provides_citation_data?
         true
@@ -44,13 +50,9 @@ module Datasource
         true
       end
 
-      def import_items(ids)
+      def import_items(ids, prefix: '') end
 
-      end
-
-      def lookup(item)
-
-      end
+      def lookup(item) end
 
       def connect
         @con = PG.connect(host: ENV['KB_HOST'],

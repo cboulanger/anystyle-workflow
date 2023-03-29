@@ -54,6 +54,12 @@ module Datasource
         [Format::CSL::ARTICLE_JOURNAL, Format::CSL::CHAPTER, Format::CSL::BOOK]
       end
 
+      # The type of identifiers that can be used to import data
+      # @return [Array<String>]
+      def id_types
+        [::Datasource::DOI]
+      end
+
       # @return [Boolean]
       def provides_citation_data?
         true
@@ -175,7 +181,7 @@ module Datasource
       # Given an array of DOIs, return their metadata in CSL-JSON format
       # @param [Array] dois
       # @return [Array<Item>]
-      def import_items(dois, include_references: false, include_abstract: false)
+      def import_items(dois, include_references: false, include_abstract: false, prefix: '')
         dois.map do |doi|
           data = get_single_entity('work', "doi:#{doi}")
           data.delete('referenced_works') unless include_references

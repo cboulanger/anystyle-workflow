@@ -33,12 +33,18 @@ module Datasource
         true
       end
 
+      # The type of identifiers that can be used to import data
+      # @return [Array<String>]
+      def id_types
+        [::Datasource::DOI]
+      end
+
       # @return [Boolean]
       def provides_affiliation_data?
         true
       end
 
-      def import_items(ids)
+      def import_items(ids, prefix: '')
         @cache ||= ::Datasource.get_vendor_data(['wos'])['wos']
         ids.map do |id|
           data = @cache[id] || @cache[id.sub('/', '_')]

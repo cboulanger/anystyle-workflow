@@ -33,8 +33,14 @@ module Datasource
         [Format::CSL::BOOK, Format::CSL::CHAPTER]
       end
 
+      # The type of identifiers that can be used to import data
+      # @return [Array<String>]
+      def id_types
+        [::Datasource::ISBN]
+      end
+
       def languages
-        ['de']
+        ['de','en']
       end
 
       # @return [Boolean]

@@ -30,6 +30,12 @@ module Datasource
         false
       end
 
+      # The type of identifiers that can be used to import data
+      # @return [Array<String>]
+      def id_types
+        [::Datasource::FILE_NAME]
+      end
+
       # @return [Boolean]
       def provides_citation_data?
         true
@@ -41,9 +47,10 @@ module Datasource
       end
 
       # @return [Array<Item>]
-      def import_items(item_ids, include_references: false, include_abstract: false)
+      def import_items(item_ids, include_references: false, include_abstract: false, prefix: '')
         item_ids.map do |id|
-          file_path = File.join(Workflow::Path.grobid_tei, "#{Workflow::Utils.to_filename(id)}.tei.xml")
+          file_path = File.join(Workflow::Path.grobid_tei,
+                                "#{prefix}#{Workflow::Utils.to_filename(id)}.tei.xml")
           if File.exist? file_path
             data = {
               "DOI": id

@@ -545,7 +545,7 @@ module Format
 
       def to_s
         creator, year, title = creator_year_title
-        "#{creator} (#{year}), #{title}"
+        "#{creator} (#{year}): #{title}"
       end
 
       # @return [String]

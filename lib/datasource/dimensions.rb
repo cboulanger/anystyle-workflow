@@ -41,6 +41,12 @@ module Datasource
         false
       end
 
+      # The type of identifiers that can be used to import data
+      # @return [Array<String>]
+      def id_types
+        [::Datasource::DOI]
+      end
+
       # @return [Boolean]
       def provides_citation_data?
         true
@@ -52,7 +58,7 @@ module Datasource
       end
 
       # @return [Array<Item>]
-      def import_items(dois, include_references: false, include_abstract: false, reset_cache: false)
+      def import_items(dois, include_references: false, include_abstract: false, reset_cache: false, prefix: '')
         @cache ||= Cache.load('dimensions', use_literal: true)
         if @cache && !reset_cache
           puts " - Getting data for #{dois.join(',')} from cache..." if verbose

@@ -30,7 +30,7 @@ module Format
                 w.year = #{@item.issued&.to_year || 0},
                 w.type = "#{@item.type}",
                 w.display_name = #{JSON.dump @item.to_s.downcase},
-                w.container = #{JSON.dump @item.container_title.downcase},
+                w.container = #{JSON.dump @item.container_title&.downcase},
                 w.url = "#{@item.url}"
       CYPHER
       )
@@ -43,7 +43,7 @@ module Format
           <<~CYPHER
             MERGE (#{a_var}:Author {family: #{JSON.dump family}, given:#{JSON.dump given}})
               ON CREATE SET
-                #{a_var}.display_name = "#{family}, #{given}"
+                #{a_var}.display_name = #{JSON.dump "#{family}, #{given}"}
             MERGE (#{a_var})-[:CREATOR_OF]->(w)
         CYPHER
         )

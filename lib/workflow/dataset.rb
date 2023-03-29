@@ -34,10 +34,10 @@ module Workflow
     # @!attribute [Integer] ref_year_start The first year for which to include references, defaults to 1700
     # # @!attribute [Integer] ref_year_end The last year for which to include references, defaults to current year plus 2
     Options = Struct.new(
-      :generate_abstract,
       :text_dir,
-      :stopword_files,
+      :generate_abstract,
       :generate_keywords,
+      :stopword_files,
       :verbose,
       :reference_lookup,
       :use_cache,
@@ -137,8 +137,6 @@ module Workflow
         unless ids.is_a?(Array) && ids.first.is_a?(String)
 
       @ids = ids
-
-      # @type [Array<Format::CSL::Item>]
       num_refs = 0
       counter = 0
       total = [@ids.length, limit || @ids.length].min
@@ -321,38 +319,61 @@ module Workflow
     # @param [String] item_id
     # @return [Format::CSL::Item]
     def merge_and_validate(item_id)
-      raise 'Id currently must be a DOI' unless item_id.start_with? '10.'
 
       policies = @options.policies
 
       # The validated references
       # @type [Array<Format::CSL::Item>]
       validated_references = []
-      num_anystyle_added_refs = 0
+      num_added_refs = 0
       num_anystyle_validated_refs = 0
       num_anystyle_unvalidated_refs = 0
-      item = nil
 
+      skip_crossref = false
       # lookup with crossref metadata by doi
-      Datasource.citation_data_providers.each do |datasource|
-
-        datasource.verbose = @options.verbose
-
-        if item.nil?
+      # @type [Format::CSL::Item]
+      item =
+        case item_id
+        when /^10\./
           # get anystyle item (enriched with crossref metadata) this works because anystyle
           # is the first in the list
-          # @type [Item]
-          item = datasource.import_items([item_id]).first
+          item_id_type = ::Datasource::DOI
+          skip_crossref = true
+          ::Datasource::Crossref.import_items([item_id]).first
+        else
+          # assume its a book or book chapter, using file name file name
+          # # TO DO ISBN
+          m = item_id.match(/(.+) \((\d+)\) (.+)/)
+          raise "Cannot parse id '#{item_id}'" if m.nil?
+          item_id_type = ::Datasource::FILE_NAME
+          ::Format::CSL::Item.new({
+                                    "type" => ::Format::CSL::BOOK,
+                                    "author" => [{ "family" => m[1] }],
+                                    "issued" => m[2],
+                                    "title" => m[3]
+                                  })
+        end
+
+      # get references from AnyStyle
+      item.x_references = ::Datasource::Anystyle.import_items([item_id], prefix: "#{@name}/").first.x_references
+
+      # Add metadata / validate references
+      Datasource.citation_data_providers.each do |datasource|
+        datasource.verbose = @options.verbose
+
+        next if skip_crossref && datasource == Datasource::Crossref
+        next if datasource == Datasource::Anystyle
+
+        unless datasource.id_types.include? item_id_type
+          puts " - #{datasource.id}: id type '#{item_id_type}' is not supported" if @options.verbose
           next
         end
 
         # @type [Format::CSL::Item]
-        vendor_item = datasource.import_items([item_id]).first
-
-        raise NoDataError, "No AnyStyle data available for ID #{item_id}" if item.nil?
+        vendor_item = datasource.import_items([item_id], prefix: "#{@name}/").first
 
         if vendor_item.nil?
-          puts " - #{datasource.id}: No data available".colorize(:red) if @options.verbose
+          puts " - #{datasource.id}: No data available" if @options.verbose
           next
         end
 
@@ -404,7 +425,7 @@ module Workflow
               unless ref.custom.validated_by.keys.count > 1
                 validated_references.append(ref)
                 puts " - anystyle: Added #{author} #{year} (validated by #{datasource.id})" if @options.verbose
-                num_anystyle_added_refs += 1
+                num_added_refs += 1
               end
               num_anystyle_validated_refs += 1
               matched = true
@@ -433,8 +454,8 @@ module Workflow
         end
 
         if @options.verbose && num_vendor_added_refs.positive?
-          puts " - #{datasource.id}: validated #{num_anystyle_validated_refs} anystyle references " \
-                 "(of which #{num_anystyle_added_refs} were added), " \
+          puts " - #{datasource.id}: validated #{num_anystyle_validated_refs} references " \
+                 "(of which #{num_added_refs} were added), " \
                  "and added #{num_vendor_added_refs} missing references"
         end
 
@@ -458,6 +479,7 @@ module Workflow
           next if ref.validated?
 
           author, year = ref.creator_year_title(downcase: true)
+
           next if author.nil? || author.empty?
 
           # ignore specific authors or false positives
@@ -465,11 +487,11 @@ module Workflow
             expr.is_a?(Regexp) ? author.match(expr) : author == expr
           end
 
-          puts " - anystyle: Added unvalidated #{author} #{year}" if @options.verbose
+          puts " - #{ref.custom.reference_data_source}: Added unvalidated #{author} #{year}" if @options.verbose
           validated_references.append(ref)
           num_anystyle_unvalidated_refs += 1
         end
-        puts " - added #{num_anystyle_unvalidated_refs} unvalidated anystyle references" if @options.verbose
+        puts " - added #{num_anystyle_unvalidated_refs} unvalidated references" if @options.verbose
       end
 
       if policies.include?(REMOVE_DUPLICATES)
@@ -499,7 +521,7 @@ module Workflow
       Datasource.metadata_providers.each do |provider|
         lang = guess_language(ref.title).iso_639_1
         if provider.metadata_types.include?(ref.type || ref.guess_type) &&
-            (provider.languages.empty? || provider.languages.include?(lang))
+          (provider.languages.empty? || provider.languages.include?(lang))
           puts "     - #{provider.id}: looking up #{ref.to_s[..80]}" if @options.verbose
         else
           puts "     - #{provider.id}: no support for type #{ref.type} and/or language #{lang}" if @options.verbose

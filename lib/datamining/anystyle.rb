@@ -96,10 +96,14 @@ module Datamining
     end
 
     # fixes problems in a CSL-JSON hash
+    # @param [Array<::Format::CSL::Item>] items
     def fix_csl(items)
+      last_author = nil
       items.map do |item|
+
         # we don't need "scripts" info, it's not CSL-JSON compliant anyways
         item.delete(:scripts)
+
         # fix missing/incorrect types
         item[:type] = 'book' if item[:type].nil? && (item[:issued] && !item[:'container-title'])
         if item[:editor] || item[:'publisher-place'] || item[:publisher] || item[:edition]
@@ -110,6 +114,13 @@ module Datamining
                         end
         end
         item[:type] = 'document' if item[:type].nil?
+
+        # fix backreferences: Ders., Dies., -
+        if last_author && item.creator_family_names.first&.match(/^(ders\.?|dies\.?|\p{Pd}$)/i)
+          item.author = last_author
+        end
+        last_author = item.author
+        # do editor, too
         item
       end
     end

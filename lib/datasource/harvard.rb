@@ -39,6 +39,12 @@ module Datasource
         true
       end
 
+      # The type of identifiers that can be used to import data
+      # @return [Array<String>]
+      def id_types
+        [::Datasource::ISBN]
+      end
+
       # @return [Array<String>]
       def metadata_types
         [Format::CSL::BOOK]

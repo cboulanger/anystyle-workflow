@@ -7,9 +7,10 @@ module Workflow
       include ::Format::CSL
 
       # extracts text from PDF documents
-      # @param [String] source_dir
+      # @param [String, nil] source_dir Defaults to workflow pdf dir
+      # @param [String, nil] target_dir Defaults to workflow txt dir
       # @param [Boolean] overwrite
-      def pdf_to_txt(source_dir = Path.pdf, overwrite: false)
+      def pdf_to_txt(source_dir = Path.pdf, target_dir= Path.txt, overwrite: false)
         anystyle = Datamining::AnyStyle.new
         files = Dir.glob(File.join(source_dir, '*.pdf'))
         progressbar = ProgressBar.create(title: 'Extracting text from PDF:',
@@ -17,7 +18,7 @@ module Workflow
                                          **Config.progress_defaults)
         files.each do |file_path|
           file_name = File.basename(file_path, '.pdf')
-          outfile = File.join(Path.txt, "#{file_name}.txt")
+          outfile = File.join(target_dir, "#{file_name}.txt")
           progressbar.increment
           next if !overwrite && File.exist?(outfile)
 
@@ -34,7 +35,8 @@ module Workflow
       end
 
       # Extracts reference information from the raw text of the documents and writes the corresponding output files
-      # @param [String] source_dir Defaults to data/2-txt
+      # @param [String,Array<String>] source If String, directory containing the text files.
+      #   If array, list of files to extract from. Defaults to data/2-txt
       # @param [Boolean] output_intermediaries If true, write intermediary file formats to disk for debugging purposes, will slow down extraction considerably
       # @param [Boolean] overwrite If true, overwrite existing files
       # @param [String, nil] model_dir
@@ -42,7 +44,7 @@ module Workflow
       # @param [String, nil] finder_gold_dir
       # @param [Integer, nil] limit
       # @param [String, nil] prefix The prefix is added to the output files. can contain a directory path
-      def doc_to_csl_json(source_dir: Path.txt,
+      def doc_to_csl_json(source: Path.txt,
                           model_dir: Path.models,
                           overwrite: false,
                           output_intermediaries: false,
@@ -50,11 +52,23 @@ module Workflow
                           finder_gold_dir: nil,
                           prefix: '',
                           verbose: false,
-                          limit:nil)
+                          limit: nil)
+        files = case source
+                when String
+                  raise "Invalid directory '#{source}'" unless Dir.exist? source
+                  Dir.glob(File.join(source, '*.txt'))
+                when Array
+                  source.each do |f|
+                    raise "File does not exist: '#{f}'" unless File.exist? f
+                    raise "File does not end in '.txt': '#{f}'" unless f.end_with? '.txt'
+                  end
+                else
+                  raise 'Invalid `source` argument'
+                end
         finder_model_path = File.join model_dir, 'finder.mod'
         parser_model_path = File.join model_dir, 'parser.mod'
         anystyle = Datamining::AnyStyle.new(finder_model_path:, parser_model_path:)
-        files = Dir.glob(File.join(source_dir, '*.txt'))
+
         unless verbose
           progressbar = ProgressBar.create(title: 'Extracting references from text:',
                                            total: files.length,
