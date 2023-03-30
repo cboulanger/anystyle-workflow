@@ -96,7 +96,7 @@ module Datamining
     end
 
     # fixes problems in a CSL-JSON hash
-    # @param [Array<::Format::CSL::Item>] items
+    # @param [Array<Hash>] items
     def fix_csl(items)
       last_author = nil
       items.map do |item|
@@ -115,11 +115,13 @@ module Datamining
         end
         item[:type] = 'document' if item[:type].nil?
 
-        # fix backreferences: Ders., Dies., -
-        if last_author && item.creator_family_names.first&.match(/^(ders\.?|dies\.?|\p{Pd}$)/i)
-          item.author = last_author
+        # fix backreferences: Ders., Dies.,
+        author = item.dig('author', 0, 'family')
+        if last_author && author && author.match(/^(ders\.?|dies\.?|\p{Pd}$)/i)
+          item['author'] = last_author
+        else
+          last_author = item['author']
         end
-        last_author = item.author
         # do editor, too
         item
       end

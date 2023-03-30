@@ -5,13 +5,15 @@ require './lib/datasource/datasource'
 require 'httpx'
 require 'erb'
 
+# https://api.ror.org/organizations?affiliation=univ%20glasgow
+
 module Datasource
-  class Lobid < ::Datasource::Datasource
+  class Ror < ::Datasource::Datasource
 
     HTTPX::Plugins.load_plugin(:follow_redirects)
     HTTPX::Plugins.load_plugin(:retries)
 
-    @base_api_url = 'https://lobid.org/resources/search?'
+    @base_api_url = 'https://api.ror.org/organizations?'
     @headers = {
       'Accept' => 'application/json'
     }
@@ -23,38 +25,28 @@ module Datasource
     class << self
       # @return [String]
       def id
-        'lobid'
+        'ror'
       end
 
       # @return [String]
       def label
-        'Data from lobid.org'
+        'Data from api.ror.org'
       end
 
       # @return [Boolean]
       def enabled?
-        true
+        false
       end
 
       # @return [Boolean]
       def provides_metadata?
-        true
+        false
       end
 
       # The type of identifiers that can be used to import data
       # @return [Array<String>]
       def id_types
-        [::Datasource::ISBN]
-      end
-
-      # @return [Array<String>]
-      def metadata_types
-        [Format::CSL::BOOK, Format::CSL::CHAPTER]
-      end
-
-      # @return [Array<String>]
-      def languages
-        ['de']
+        [::Datasource::ROR_ID]
       end
 
       # @return [Boolean]
@@ -67,97 +59,32 @@ module Datasource
         true
       end
 
-      # @param [::Format::CSL::Item] item
-      # @return [::Format::CSL::Item | nil]
-      def lookup(item)
-        author, year, title = item.creator_year_title(downcase: true)
-        # query = %W[contribution.agent.label:#{author}
-        #            publication.startDate:#{year}
-        #            title:#{title.scan(/\p{L}+/).join(' ')}].join(' AND ')
-
-        query = "#{author} #{year} #{title}".scan(/\p{Alnum}+/).join(' ')
-
-        url = "#{@base_api_url}q=#{ERB::Util.url_encode(query)}"
-        cache = Cache.new(url, prefix: 'lobid-')
+      def lookup(affiliation_string)
+        url = "#{@base_api_url}affiliation=#{ERB::Util.url_encode(affiliation_string)}"
+        cache = Cache.new(url, prefix: "#{id}-")
         if (data = cache.load).nil?
-          puts "     - lobid: requesting #{url}" if @verbose
+          puts "     - #{id}: requesting #{url}" if @verbose
           response = @http.get(url)
           raise response.error if response.status >= 400
 
           data = response.json
           cache.save(data)
-          return nil if (data['totalItems']).zero?
+          return nil if (data['number_of_results']).zero?
         elsif verbose
-          puts '     - lobid: cached data exists' if @verbose
+          puts "     - #{id}: cached data exists" if @verbose
         end
-        data['member'].map { |r| Item.new(r) }.first
+        data['x_affiliation_api_url'] = url
+        Affiliation.new(data['items'][0])
       end
 
     end
 
-    class Creator < Format::CSL::Creator
-      def initialize(data)
-        data.merge! Namae.parse(data['label']).first.to_h
-        super
-      end
-
-      def dateofbirth=(date)
-        self.x_date_birth = date
-      end
-
-      def id=(id)
-        self.x_author_id = id
-      end
-
-      # ignore the following attributes
-      def dateofbirthanddeath=(*) end
-      def label=(*); end
-      def type=(*) end
-      def gndidentifier=(*) end
-      def type(*) end
-      def dateofdeath=(*) end
-      def altlabel=(*) end
-      def source=(*) end
-    end
-
-    class Item < Format::CSL::Item
-      def initialize(data)
-        custom.metadata_source = 'lobid'
-        custom.metadata_id = data['id']
-        custom.same_as = (custom.same_as || []) + data['sameAs'].map { |s| s['id'] } if data['sameAs']
-        fields = %w[type contribution publication isbn language edition title]
-        data.each_key { |key| data.delete(key) unless fields.include? key }
-        super
-      end
-
-      def type
-        Format::CSL::BOOK
-      end
-
-      def publication=(p)
-        return unless (p = p.first)
-
-        self.publisher = Array(p['publishedBy']).map { |i| i.sub(/Imprint:/, '') }.join(' ')
-        self.issued = p['startDate'] || 0
-        self.publisher_place = p['location']
-      end
-
-      def contribution=(contribution)
-        contribution.each do |c|
-          case c['role']['id']
-          when 'http://id.loc.gov/vocabulary/relators/aut'
-            author << Creator.new(c['agent'])
-          when 'http://id.loc.gov/vocabulary/relators/edt'
-            editor << Creator.new(c['agent'])
-          else
-            # pass
-          end
-        end
-      end
-
-
-      def edition=(ed)
-        super ed.first
+    class Affiliation < Format::CSL::Affiliation
+      def initialize(data, accessor_map: nil)
+        self.ror= data['id']
+        self.institution = data['name']
+        self.country= data.dig('country', 'country_name')
+        self.country_code = data.dig('country', 'country_name')
       end
 
     end

@@ -33,7 +33,7 @@ module Datasource
       # The type of identifiers that can be used to import data
       # @return [Array<String>]
       def id_types
-        [::Datasource::FILE_NAME]
+        [::Datasource::FILE_NAME, ::Datasource::DOI]
       end
 
       # @return [Boolean]

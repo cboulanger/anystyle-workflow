@@ -4,23 +4,24 @@ if ! [[ "$(docker images -q grobid/grobid:0.7.2 2> /dev/null)" == "" ]]; then
   docker pull grobid/grobid:0.7.2
 fi
 
-if ![[ -f tmp/grobid_client_python ]] ; then
+if ! [[ -f tmp/grobid_client_python ]] ; then
   cd tmp
   git clone https://github.com/kermitt2/grobid_client_python
   cd grobid_client_python
   python3 setup.py install
   cd ../..
+  [[ "$(command -v pyenv)" != "" ]] && pyenv rehash
 fi
 
-if ! [[ "$(docker images -q biblio-glutton 2> /dev/null)" == "" ]]; then
-  cd tmp
-  git clone https://github.com/kermitt2/biblio-glutton.git
-  cd biblio-glutton
-  docker compose build biblio elasticsearch
-fi
+#if ! [[ "$(docker images -q biblio-glutton 2> /dev/null)" == "" ]]; then
+#  cd tmp
+#  git clone https://github.com/kermitt2/biblio-glutton.git
+#  cd biblio-glutton
+#  docker compose build biblio elasticsearch
+#fi
 
 # Start containers as daemons
 [ ! "$(docker ps -a | grep 'grobid/grobid:0.7.2')" ] && \
     docker run -d -p 8070:8070 grobid/grobid:0.7.2 # --gpus all on linux
-[ ! "$(docker ps -a | grep 'biblio-glutton')" ] && \
-    docker compose start elasticsearch biblio
+#[ ! "$(docker ps -a | grep 'biblio-glutton')" ] && \
+#    docker compose start elasticsearch biblio

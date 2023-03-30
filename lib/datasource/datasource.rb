@@ -7,7 +7,8 @@ module Datasource
   IDENTIFIERS = [
     DOI = "doi",
     ISBN = "isbn",
-    FILE_NAME = "file"
+    FILE_NAME = "file",
+    ROR_ID = "ror_id"
   ]
 
   class << self

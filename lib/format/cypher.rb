@@ -55,15 +55,7 @@ module Format
         affs.each_with_index do |a, i_index|
           i_var = "i#{index + 1}#{i_index + 1}"
           a.institution = a.institution.first if a.institution.is_a? Array
-          institution = (a.institution || a.literal.to_s[..50] || 'unknown')
-                          .downcase
-                          .gsub('university', 'univ ')
-                          .gsub('college', 'coll ')
-                          .gsub('school', 'sch ')
-                          .gsub('department', 'dep ')
-                          .gsub(/(^| )the /, ' ')
-                          .gsub(' of ', ' ')
-                          .gsub('  ', ' ').strip
+          institution = (a.institution || a.literal.to_s[..50] || 'unknown').downcase
 
           output.append(
             <<~CYPHER

@@ -233,7 +233,10 @@ module Format
     #
     class Affiliation < Model
       attr_accessor :center, :institution, :department, :address, :country,
-                    :country_code, :ror, :x_affiliation_api_url, :x_affiliation_id, :x_affiliation_source
+                    :country_code, :ror,
+                    :x_affiliation_api_url,
+                    :x_affiliation_id,
+                    :x_affiliation_source
 
       attr_reader :literal
 
@@ -249,7 +252,8 @@ module Format
       end
 
       def to_s
-        @literal || [@center, @department, @institution].compact.join(", ")
+        aff = [@center, @department, @institution, @country||@country_code].compact
+        aff.empty? ? @literal : aff.join(", ")
       end
 
     end

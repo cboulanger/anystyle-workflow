@@ -205,7 +205,7 @@ module Workflow
               puts "     - ISBN exists: #{ref.ISBN}".colorize(:green) if @options.verbose
               ref
             else
-              reconcile ref
+              reconcile_reference ref
             end
           end
         end
@@ -494,7 +494,7 @@ module Workflow
         puts " - added #{num_anystyle_unvalidated_refs} unvalidated references" if @options.verbose
       end
 
-      if policies.include?(REMOVE_DUPLICATES)
+      if policies.include? REMOVE_DUPLICATES
         num_before = validated_references.length
         validated_references.uniq! { |item| item.creator_year_title(downcase: true) }
         num_removed = num_before - validated_references.length
@@ -505,13 +505,30 @@ module Workflow
       item.x_references = validated_references.reject do |item|
         item.year.to_i < @options.ref_year_start || item.year.to_i > @options.ref_year_end
       end
+
+      if policies.include? ADD_AFFILIATIONS
+        item.creators.map do |creator|
+          if creator.x_affiliations.length
+            aff = reconcile_affiliation(creator.x_affiliations.first)
+            if aff
+              puts " - updated affiliation data: #{aff.to_s}".colorize(:green) if @options.verbose
+              creator.x_affiliations.first = aff
+            else
+              puts " - could not reconcile affiliation data".colorize(:yellow) if @options.verbose
+            end
+          else
+            puts " - no affiliation data" if @options.verbose
+          end
+        end
+      end
+
       # return result
       item
     end
 
     # Try to reconcile an extracted reference with datasources that allow a metadata look
     # @param [Format::CSL::Item] ref
-    def reconcile(ref)
+    def reconcile_reference(ref)
       a1, y1, t1 = ref.creator_year_title(downcase: true)
       if a1.to_s.empty? || a1 == 'no_author' || t1.to_s.empty? || t1 == 'no_title'
         puts '   - insufficient data'.colorize(:yellow) if @options.verbose
@@ -566,6 +583,16 @@ module Workflow
       end
       puts "   - no reconciliation service available for type '#{ref.type}'" if !type_supported && @options.verbose
       ref
+    end
+
+    # @param [Format::CSL::Affiliation] affiliation
+    # @return [Format::CSL::Affiliation]
+    def reconcile_affiliation(affiliation)
+      aff = affiliation.to_s
+      return if aff.to_s.empty?
+
+      Datasource::Ror.verbose = @options.verbose
+      Datasource::Ror.lookup(aff)
     end
 
     def build_indexes
