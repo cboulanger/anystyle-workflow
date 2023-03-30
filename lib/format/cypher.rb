@@ -31,7 +31,8 @@ module Format
                 w.type = "#{@item.type}",
                 w.display_name = #{JSON.dump @item.to_s.downcase},
                 w.container = #{JSON.dump @item.container_title&.downcase},
-                w.url = "#{@item.url}"
+                w.url = "#{@item.url}",
+                w.validatedBy = "#{@item.custom.validated_by&.keys&.join(",").to_s}"
       CYPHER
       )
 
@@ -56,12 +57,13 @@ module Format
           i_var = "i#{index + 1}#{i_index + 1}"
           a.institution = a.institution.first if a.institution.is_a? Array
           institution = (a.institution || a.literal.to_s[..50] || 'unknown').downcase
-
           output.append(
             <<~CYPHER
               MERGE (#{i_var}:Institution {name: #{JSON.dump institution}})
               ON CREATE SET
-                #{i_var}.country = #{JSON.dump a.country&.downcase || ''}
+                #{i_var}.country = #{JSON.dump a.country&.downcase.to_s},
+                #{i_var}.ror = #{JSON.dump a.ror.to_s},
+                #{i_var}.orig_aff = #{JSON.dump a.x_original_aff.to_s}
               MERGE (#{a_var})-[:AFFILIATED_WITH]->(#{i_var})
           CYPHER
           )

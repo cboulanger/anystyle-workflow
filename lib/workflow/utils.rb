@@ -29,7 +29,7 @@ module Workflow
       end
 
       def debug_message(str)
-        caller_locations(1, 1).first.tap { |loc| puts "DEBUG #{loc.path}:#{loc.lineno}:#{str}" }
+        caller_locations(1, 1).first.tap { |loc| puts "DEBUG #{loc.path}:#{loc.lineno}:#{str}".colorize(:yellow) }
       end
 
       def remove_whilespace_from_lines(file_path)

@@ -79,11 +79,11 @@ module Format
       protected
 
       def accessor_name(key)
-        @_key_map[key.to_s] || key.to_s.downcase.gsub('-', '_').to_sym
+        (@_key_map && @_key_map[key.to_s]) || key.to_s.downcase.gsub('-', '_').to_sym
       end
 
       def key_name(attribute)
-        @_accessor_map[attribute.to_sym] || attribute.to_s.gsub('_', '-')
+        (@_accessor_map && @_accessor_map[attribute.to_sym]) || attribute.to_s.gsub('_', '-')
       end
     end
 
@@ -233,10 +233,15 @@ module Format
     #
     class Affiliation < Model
       attr_accessor :center, :institution, :department, :address, :country,
-                    :country_code, :ror,
+                    :country_code, :ror, :ror_raw_data,
                     :x_affiliation_api_url,
                     :x_affiliation_id,
                     :x_affiliation_source
+
+      # Stores the originally extracted data which was replaced during reconciliation/linking
+      # @!attribute
+      # @return [String]
+      attr_accessor :x_original_aff
 
       attr_reader :literal
 
@@ -252,7 +257,7 @@ module Format
       end
 
       def to_s
-        aff = [@center, @department, @institution, @country||@country_code].compact
+        aff = [@institution, @country||@country_code].compact
         aff.empty? ? @literal : aff.join(", ")
       end
 
@@ -283,7 +288,7 @@ module Format
       # Stores the originally extracted data which was replaced during reconciliation/linking
       # @!attribute
       # @return [String]
-      attr_accessor :original_data
+      attr_accessor :x_original_aff
 
       # undocumented attributes
       attr_accessor :same_as, :times_cited, :metadata_source, :metadata_id, :metadata_api_url,

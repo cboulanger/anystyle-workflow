@@ -83,8 +83,6 @@ class Cache
     cp = cache_path(identifier, use_literal:, prefix:, mode:)
     if File.exist? cp
       File.delete(cp)
-    else
-      puts "Cache '#{cp}' does not exist".colorize(:red)
     end
 
   end

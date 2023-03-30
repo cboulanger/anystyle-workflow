@@ -59,11 +59,19 @@ module Datasource
         true
       end
 
-      def lookup(affiliation_string)
+
+      # @return [Array<Format::CSL::Affiliation>]
+      # @param [Format::CSL::Affiliation] affiliation
+      def lookup(affiliation)
+        raise 'Argument must be Format::CSL::Affiliation' unless affiliation.is_a? Format::CSL::Affiliation
+
+        affiliation_string = affiliation.to_s
+        return if affiliation_string.empty?
+
         url = "#{@base_api_url}affiliation=#{ERB::Util.url_encode(affiliation_string)}"
         cache = Cache.new(url, prefix: "#{id}-")
         if (data = cache.load).nil?
-          puts "     - #{id}: requesting #{url}" if @verbose
+          puts " - #{id}: requesting #{url}" if @verbose
           response = @http.get(url)
           raise response.error if response.status >= 400
 
@@ -71,10 +79,13 @@ module Datasource
           cache.save(data)
           return nil if (data['number_of_results']).zero?
         elsif verbose
-          puts "     - #{id}: cached data exists" if @verbose
+          puts " - #{id}: cached data exists" if @verbose
         end
-        data['x_affiliation_api_url'] = url
-        Affiliation.new(data['items'][0])
+        data['items'].map do |a|
+          d = a['organization']
+          d['x_affiliation_api_url'] = url
+          Affiliation.new d
+        end
       end
 
     end
@@ -84,9 +95,10 @@ module Datasource
         self.ror= data['id']
         self.institution = data['name']
         self.country= data.dig('country', 'country_name')
-        self.country_code = data.dig('country', 'country_name')
+        self.country_code = data.dig('country', 'country_code')
+        self.x_affiliation_source = "ror"
+        self.address = JSON.dump data['addresses']
       end
-
     end
   end
 end

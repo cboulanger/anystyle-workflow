@@ -424,7 +424,7 @@ module Workflow
               # add only if reference hasn't been validated already
               unless ref.custom.validated_by.keys.count > 1
                 validated_references.append(ref)
-                puts " - anystyle: Added #{author} #{year} (validated by #{datasource.id})" if @options.verbose
+                puts " - anystyle: Added #{author} #{year} (validated by #{datasource.id})".colorize(:green) if @options.verbose
                 num_added_refs += 1
               end
               num_anystyle_validated_refs += 1
@@ -507,17 +507,24 @@ module Workflow
       end
 
       if policies.include? ADD_AFFILIATIONS
-        item.creators.map do |creator|
-          if creator.x_affiliations.length
-            aff = reconcile_affiliation(creator.x_affiliations.first)
-            if aff
-              puts " - updated affiliation data: #{aff.to_s}".colorize(:green) if @options.verbose
-              creator.x_affiliations.first = aff
+        item.creators.each do |creator|
+          # @type [Array<Format:CSL:Affiliation]
+          affs = creator.x_affiliations
+          if affs.length && (aff = affs.first) && !aff.to_s.empty?
+            unless aff.ror.to_s.empty?
+              puts " - Affiliation already has a ROR entry, no need to reconcile".colorize(:green)
+              next
+            end
+            rec_aff = reconcile_affiliation(aff)
+            if rec_aff
+              puts " - updated affiliation data for #{creator.family} from '#{aff.to_s}' to '#{rec_aff.to_s}'".colorize(:green) #if @options.verbose
+              rec_aff.x_original_aff = aff
+              affs[0] = rec_aff
             else
-              puts " - could not reconcile affiliation data".colorize(:yellow) if @options.verbose
+              puts " - could not find affiliation data for #{creator.family}, #{aff.to_s}".colorize(:yellow) if @options.verbose
             end
           else
-            puts " - no affiliation data" if @options.verbose
+            puts " - no affiliation data exists for #{creator.family}" if @options.verbose
           end
         end
       end
@@ -586,13 +593,36 @@ module Workflow
     end
 
     # @param [Format::CSL::Affiliation] affiliation
-    # @return [Format::CSL::Affiliation]
+    # @return [Format::CSL::Affiliation, nil]
     def reconcile_affiliation(affiliation)
-      aff = affiliation.to_s
-      return if aff.to_s.empty?
-
       Datasource::Ror.verbose = @options.verbose
-      Datasource::Ror.lookup(aff)
+      aff_candidates = Datasource::Ror.lookup(affiliation)
+      return if aff_candidates.nil?
+
+      aff_string = affiliation.to_s
+      aff_tokens = aff_string.split(" ")
+
+      # one or two tokens are not enough
+      return if aff_tokens.length < 3
+
+      required_tokens = %w[federal univ coll]
+      aff_candidates.reduce(nil) do |result, aff_cand|
+        return result if result
+
+        cand_tokens = (JSON.dump aff_cand.to_h).scan(/\p{L}+/)
+        cand_string = cand_tokens.join(" ")
+
+        # reject candidate if a required token if it is missing a required token that is present in the source
+        return if required_tokens.any? { |token| aff_string.include?(token) && !cand_string.include?(token)}
+
+        # check if the serialized data of the affiliation candidate contains a sufficient number of the tokens in the affiliation
+        token_count = aff_tokens.count { |token| cand_string.include? token }
+        return if token_count < 3
+
+        token_diff_relative = (aff_tokens.length - token_count).to_f / aff_tokens.length
+        #puts "'#{ affiliation.to_s}' === '#{aff_cand.to_s}' => #{token_diff_relative.to_s}"
+        aff_cand if token_diff_relative < 1
+      end
     end
 
     def build_indexes
@@ -671,7 +701,7 @@ module Workflow
             creator.x_affiliations.append new_aff
           end
 
-          puts " - #{vendor}: Added affiliation data #{JSON.dump(vendor_aff)}" if @options.verbose
+          puts " - #{vendor}: Added affiliation for #{creator.family}: '#{new_aff.to_s}'".colorize(:green) if @options.verbose
         end
       end
     end
