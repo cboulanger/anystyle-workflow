@@ -94,7 +94,7 @@ module Workflow
           end
 
           # get untagged references from gold if exists, otherwise run finder parsing
-          finder_gold_path = !finder_gold_dir.nil? && mkdir(File.join(finder_gold_dir, "#{prefix}#{file_name}.ttx"))
+          finder_gold_path = !finder_gold_dir.nil? && File.join(finder_gold_dir, "#{file_name}.ttx")
           refs_txt = if finder_gold_path && File.exist?(finder_gold_path)
                        puts " - Using finder gold from #{finder_gold_path}" if verbose
                        anystyle.ttx_to_refs(finder_gold_path)
@@ -124,7 +124,7 @@ module Workflow
           end
 
           # get xml from gold if a corresponding file exists, if not, by labelling the raw references
-          parser_gold_path = !parser_gold_dir.nil? && mkdir(File.join(parser_gold_dir, "#{prefix}#{file_name}.xml"))
+          parser_gold_path = !parser_gold_dir.nil? && File.join(parser_gold_dir, "#{file_name}.xml")
           xml = if parser_gold_path && File.exist?(parser_gold_path)
                   puts " - Using parser gold from #{parser_gold_path}" if verbose
                   File.read(parser_gold_path)

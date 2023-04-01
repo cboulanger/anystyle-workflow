@@ -10,6 +10,7 @@ module Datasource
     FILE_NAME = "file",
     ROR_ID = "ror_id"
   ]
+  class NoDataError < StandardError; end
 
   class << self
 

@@ -5,7 +5,12 @@ require 'rexml'
 
 module Datamining
 
-  REFERENCE_LABEL_REGEX = /^(ref|bib|intext)/
+  REGEX_FOOTNOTE_LABEL = /^ref/
+  REGEX_BIBLIOGARPY_LABEL = /^bib/
+  REGEX_INTEXT_LABEL = /^intext/
+  REGEX_FOOTNOTE = /^([\d]{1,3})(\.?\s+)(\p{L}.{10,})$/iu
+  REGEX_DASH_AT_LINE_END = /\p{Pd}$/
+  REGEX_PUNC_OR_NUM_AT_LINE_END = /[\p{N}\p{P}]$/u
 
   class AnyStyle
     include ::AnyStyle::PDFUtils
@@ -31,27 +36,82 @@ module Datamining
       refs.map(&:strip).join("\n")
     end
 
-    # Given a path to a .ttx file, return unparsed references as a newline-separated text
-    # @param [String] file_path
-    def ttx_to_refs(file_path)
-      in_ref = false
-      File.read(file_path).split("\n").reduce([]) do |refs, line|
-        label, text = line.split("|", 2)
-        if label.match(REFERENCE_LABEL_REGEX)
-          in_ref = true
-        elsif !label.strip.empty?
-          in_ref = false
-        end
-        refs << text.strip if in_ref
-        refs
-      end.join("\n")
-    end
-
     # Given the path to a .txt file containing the raw text of the document, return
     # the line-tagged format that can be saved as a '.ttx' file
     # @param [String] file_path
     def doc_to_ttx(file_path)
       ::AnyStyle.finder.find(file_path, format: :wapiti)[0].to_s(tagged: true)
+    end
+
+    # Given a path to a .ttx file, return unparsed references as a newline-separated text
+    # TODO: Insert newline between references / footnotes
+    # @param [String] file_path
+    def ttx_to_refs(file_path)
+      lines = File.read(file_path).split("\n")
+      footnote_lines = extract_lines(lines, REGEX_FOOTNOTE_LABEL)
+      bibliography_lines = extract_lines(lines, REGEX_BIBLIOGARPY_LABEL)
+      (split_paragraphs(footnote_lines, is_footnote: true) + split_paragraphs(bibliography_lines)).join("\n")
+    end
+
+    # Extracts the lines which of which the label matches the given regexpr
+    # @param [Regexp] label_regex
+    # @return [Array<String>]
+    def extract_lines(lines, label_regex)
+      is_label = false
+      lines.reduce([]) do |refs, line|
+        label, text = line.split("|", 2).map(&:strip)
+        if label.match(label_regex)
+          is_label = true
+        elsif !label.strip.empty?
+          is_label = false
+        end
+        refs << text if is_label
+        refs
+      end
+    end
+
+    # given an array of lines of text, split them into paragraphs using
+    # some simple heuristics. this really should be done using a language model.
+    # @param [Array<String>] lines
+    # @param [Boolean] is_fotnote
+    # @return [Array<String>]
+    def split_paragraphs(lines, is_footnote: false)
+      para = ""
+      current_fn_number = 0
+      lines.each_with_index.reduce([]) do |paras, (line, index)|
+        line = line.strip
+        # apply heuristics
+        previous_ends_with_dash = index > 0 && lines[index - 1].strip.match?(REGEX_DASH_AT_LINE_END)
+        previous_ends_with_num_punct = index > 0 && lines[index - 1].strip.match?(REGEX_PUNC_OR_NUM_AT_LINE_END)
+        is_longer_than_previous = index > 0 && line.length - lines[index - 1].length > 3
+        is_new_paragraph = if previous_ends_with_dash
+                             false
+                           elsif is_footnote
+                             fn_number = line.match(REGEX_FOOTNOTE).to_a.dig(1)&.to_i
+                             probably_next_fn_num = fn_number && (fn_number - current_fn_number).between?(1, 5)
+                             if probably_next_fn_num
+                                current_fn_number = fn_number
+                                (is_longer_than_previous || previous_ends_with_num_punct)
+                             end
+                           else
+                             is_longer_than_previous
+                           end
+        if is_new_paragraph
+          paras << para if para != ""
+          para = ""
+        end
+        para += self.prepare_unwrap_line(line)
+        paras
+      end
+    end
+
+    def prepare_unwrap_line(line)
+      if line.match(REGEX_DASH_AT_LINE_END)
+        line = line.gsub(REGEX_DASH_AT_LINE_END, '')
+      else
+        line += " "
+      end
+      line.strip
     end
 
     # Given the path to a .txt file containing the raw text of the document, return

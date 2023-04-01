@@ -4,6 +4,9 @@ require './lib/format/format'
 
 module Format
   class Cypher < ::Format::Format
+
+    @counter = 0
+
     def self.header
       [
         'CREATE CONSTRAINT work_id IF NOT EXISTS ON (w:Work) ASSERT w.id IS UNIQUE;',
@@ -14,6 +17,10 @@ module Format
         'CREATE INDEX author_display_name IF NOT EXISTS FOR (a:Author) ON (a.display_name)'
       # 'CALL db.awaitIndexes();'
       ]
+    end
+
+    def self.next_work_num
+      @counter += 1
     end
 
     def serialize
@@ -44,7 +51,7 @@ module Format
           <<~CYPHER
             MERGE (#{a_var}:Author {family: #{JSON.dump family}, given:#{JSON.dump given}})
               ON CREATE SET
-                #{a_var}.display_name = #{JSON.dump "#{family}, #{given}"}
+                #{a_var}.display_name = #{JSON.dump(given.to_s.empty? ? given : "#{family}, #{given}")}
             MERGE (#{a_var})-[:CREATOR_OF]->(w)
         CYPHER
         )
@@ -54,7 +61,7 @@ module Format
         # TO DO: remove duplicates, use only first affiliation for now
         affs = [creator.x_affiliations[0]]
         affs.each_with_index do |a, i_index|
-          i_var = "i#{index + 1}#{i_index + 1}"
+          i_var = "i#{index + 1}_#{i_index + 1}"
           a.institution = a.institution.first if a.institution.is_a? Array
           institution = (a.institution || a.literal.to_s[..50] || 'unknown').downcase
           output.append(
@@ -63,7 +70,8 @@ module Format
               ON CREATE SET
                 #{i_var}.country = #{JSON.dump a.country&.downcase.to_s},
                 #{i_var}.ror = #{JSON.dump a.ror.to_s},
-                #{i_var}.orig_aff = #{JSON.dump a.x_original_aff.to_s}
+                #{i_var}.source = #{JSON.dump a.ror.to_s},
+                #{i_var}.orig_aff = #{JSON.dump a.x_affiliation_source.to_s}
               MERGE (#{a_var})-[:AFFILIATED_WITH]->(#{i_var})
           CYPHER
           )
@@ -100,7 +108,7 @@ module Format
 
       end
 
-      output.append('RETURN *;')
+      output.append('RETURN "ok";')
 
       # references
       unless @item.x_references.empty?

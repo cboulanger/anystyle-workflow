@@ -6,7 +6,6 @@ module Workflow
   class Dataset
     include ::Utils::NLP
 
-    class NoDataError < StandardError; end
 
     MERGE_POLICIES = [
       # add all missing references found in the vendor data
@@ -164,7 +163,7 @@ module Workflow
           begin
             # merge available data according to the policies
             item = merge_and_validate(id)
-          rescue NoDataError => e
+          rescue ::Datasource::NoDataError => e
             puts e.to_s.colorize(:red)
             next
           rescue StandardError => e
@@ -512,12 +511,12 @@ module Workflow
           affs = creator.x_affiliations
           if affs.length && (aff = affs.first) && !aff.to_s.empty?
             unless aff.ror.to_s.empty?
-              puts " - Affiliation already has a ROR entry, no need to reconcile".colorize(:green)
+              puts " - Affiliation already has a ROR entry, no need to reconcile".colorize(:green).colorize(:green)
               next
             end
             rec_aff = reconcile_affiliation(aff)
             if rec_aff
-              puts " - updated affiliation data for #{creator.family} from '#{aff.to_s}' to '#{rec_aff.to_s}'".colorize(:green) #if @options.verbose
+              puts " - updated affiliation data for #{creator.family} from '#{aff.to_s}' to '#{rec_aff.to_s}'".colorize(:green) if @options.verbose
               rec_aff.x_original_aff = aff
               affs[0] = rec_aff
             else

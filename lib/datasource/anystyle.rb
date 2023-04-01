@@ -47,24 +47,7 @@ module Datasource
         ids.map do |id|
           file_path = File.join(::Workflow::Path.csl,
                                 "#{prefix}#{Workflow::Utils.to_filename(id)}.json")
-          raise "Anystyle csl file does not exist: '#{file_path}'" unless File.exist? file_path
-
-          # if id.start_with? '10.'
-          #   # use crossref item for metadata
-          #   Crossref.verbose = self.verbose
-          #   data = Crossref.import_items([id], include_references: false).first.to_h
-          # elsif (m = id.match(/(.+) \((\d+)\) (.+)/))
-          #   # assume book
-          #   data = {
-          #     "type" => ::Format::CSL::BOOK,
-          #     "author" => [{ "family" => m[1] }],
-          #     "issued" => m[2],
-          #     "title" => m[3]
-          #   }
-          # else
-          #   raise "Cannot handle id '#{id}'"
-          # end
-          # item = Item.new(data)
+          raise ::Datasource::NoDataError("Anystyle csl file does not exist: '#{file_path}'") unless File.exist? file_path
 
           item = Item.new({})
           item.x_references = JSON.load_file(file_path).map { |ref| Item.new(ref) }
@@ -75,8 +58,8 @@ module Datasource
 
     class Item < Format::CSL::Item
       def initialize(data)
-        custom.metadata_source = "crossref"
         custom.reference_data_source = "anystyle"
+        custom.metadata_id = data['id']
         data.delete('signal')
         data.delete('backref')
         data.delete('ignore')
