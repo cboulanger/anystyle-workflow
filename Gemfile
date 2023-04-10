@@ -29,3 +29,7 @@ gem "ruby-jq", "~> 0.2.1"
 gem "sqlite3", "~> 1.6"
 
 gem "pg", "~> 1.4"
+
+gem "tqdm", "~> 0.4.1"
+
+gem "grim", "~> 1.3"

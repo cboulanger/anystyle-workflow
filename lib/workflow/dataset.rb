@@ -329,13 +329,12 @@ module Workflow
       num_anystyle_unvalidated_refs = 0
 
       skip_crossref = false
-      # lookup with crossref metadata by doi
+      # 1) lookup with crossref metadata by doi
       # @type [Format::CSL::Item]
       item =
         case item_id
         when /^10\./
-          # get anystyle item (enriched with crossref metadata) this works because anystyle
-          # is the first in the list
+          # get crossref metatdata for the item
           item_id_type = ::Datasource::DOI
           skip_crossref = true
           ::Datasource::Crossref.import_items([item_id]).first
@@ -353,10 +352,10 @@ module Workflow
                                   })
         end
 
-      # get references from AnyStyle
+      # 2) get references from AnyStyle
       item.x_references = ::Datasource::Anystyle.import_items([item_id], prefix: "#{@name}/").first.x_references
 
-      # Add metadata / validate references
+      # 3) add / validate references
       Datasource.citation_data_providers.each do |datasource|
         datasource.verbose = @options.verbose
 
@@ -485,7 +484,6 @@ module Workflow
           next if @options.authors_ignore_list.any? do |expr|
             expr.is_a?(Regexp) ? author.match(expr) : author == expr
           end
-
           puts " - #{ref.custom.reference_data_source}: Added unvalidated #{author} #{year}" if @options.verbose
           validated_references.append(ref)
           num_anystyle_unvalidated_refs += 1
@@ -509,7 +507,7 @@ module Workflow
         item.creators.each do |creator|
           # @type [Array<Format:CSL:Affiliation]
           affs = creator.x_affiliations
-          if affs.length && (aff = affs.first) && !aff.to_s.empty?
+          if affs.to_a.length.positive? && (aff = affs.first) && !aff.to_s.empty?
             unless aff.ror.to_s.empty?
               puts " - Affiliation already has a ROR entry, no need to reconcile".colorize(:green).colorize(:green)
               next

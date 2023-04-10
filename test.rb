@@ -128,4 +128,16 @@ def test11
   pp Datasource::WosKb.items_by_autor "Ehrlich, Eugen"
 end
 
-test11
+def test12
+  require './lib/service/google-document-ai'
+  first_page= 348
+  service = Service::GoogleDocumentAi.new
+  service.process("data/1-pdf/Raiser (1987) Rechtssoziologie.pdf", first_page: first_page).each_with_index do |text, i|
+    puts "Saving page #{first_page + i}"
+    open('tmp/raiser-1987.txt', 'a') do |f|
+      f << "#{text}\n"
+    end
+  end
+end
+
+test12

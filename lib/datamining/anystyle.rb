@@ -17,8 +17,9 @@ module Datamining
 
     # it doesn't make sense to use an instance here if the underlying AnyStyle object is a singleton,
     # this needs to be refactored
-    def initialize(finder_model_path: nil, parser_model_path: nil, use_default_models: false)
+    def initialize(finder_model_path: nil, parser_model_path: nil, use_default_models: false, verbose: false)
       AnyStyle.load_models(finder_model_path, parser_model_path) unless use_default_models
+      @verbose = verbose
     end
 
     # loads the models, defaults to loading from models dir
@@ -158,7 +159,7 @@ module Datamining
     # fixes problems in a CSL-JSON hash
     # @param [Array<Hash>] items
     def fix_csl(items)
-      last_author = nil
+      last_creator = {}
       items.map do |item|
 
         # we don't need "scripts" info, it's not CSL-JSON compliant anyways
@@ -176,13 +177,27 @@ module Datamining
         item[:type] = 'document' if item[:type].nil?
 
         # fix backreferences: Ders., Dies.,
-        author = item.dig('author', 0, 'family')
-        if last_author && author && author.match(/^(ders\.?|dies\.?|\p{Pd}$)/i)
-          item['author'] = last_author
-        else
-          last_author = item['author']
+        [:author, :editor].each do |key|
+          unless (creator = item[key]&.first).nil?
+            family = creator[:family].to_s.strip
+            given = creator[:given].to_s.strip
+            literal = creator[:literal].to_s.strip
+            # switch family and given if family is empty
+            if family.empty? && !given.empty?
+              creator[:given] = family
+              creator[:family] = given
+            end
+            name = [family,given,literal].reject { |n| n.empty? }.first
+            if name
+              if last_creator[key] && name.downcase.match(/^(ders\.?|dies\.?|\p{Pd})$/)
+                item[key][0] = last_creator[key]
+                puts "   - Replaced #{key.to_s} '#{name}' with '#{last_creator[key]}'" if @verbose
+              else
+                last_creator[key] = creator
+              end
+            end
+          end
         end
-        # do editor, too
         item
       end
     end

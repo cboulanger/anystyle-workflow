@@ -156,7 +156,7 @@ if ARGV.include? 'extract'
   if !pdf_dir.nil?
     Workflow::Extraction.pdf_to_txt pdf_dir
   elsif (text_dir.nil? || !Dir.exist?(text_dir)) && (id_file.nil? || !File.exist?(id_file))
-    raise 'You have to provide a valid --from--pdf, --from--txt or --id-file argument'
+    raise 'You have to provide a valid --from--pdf, --from--text or --id-file argument'
   end
 
   source = if id_file
@@ -251,15 +251,6 @@ if ARGV.include? 'check'
     Workflow::Check.run parser_gold_path, outfile_name: 'check-default-parser'
   end
 
-  if ARGV.include? '--fix'
-    Dir.glob("#{finder_gold_path}/*.ttx").each do |file_path|
-      content = File.read(file_path.untaint)
-      lines = content.split("\n").map do |line|
-        (line.end_with? '|') ? "#{line} " : line
-      end
-      File.write(file_path, lines.join("\n"))
-    end
-  end
 
   Datamining::AnyStyle.load_models
   puts "Using custom model at at #{AnyStyle.parser.model.path}:"

@@ -67,7 +67,7 @@ module Workflow
                 end
         finder_model_path = File.join model_dir, 'finder.mod'
         parser_model_path = File.join model_dir, 'parser.mod'
-        anystyle = Datamining::AnyStyle.new(finder_model_path:, parser_model_path:)
+        anystyle = Datamining::AnyStyle.new(finder_model_path:, parser_model_path:, verbose:)
 
         unless verbose
           progressbar = ProgressBar.create(title: 'Extracting references from text:',
