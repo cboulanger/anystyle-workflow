@@ -1,6 +1,6 @@
 # sudo apt install libpq-dev
 # bundle add pg
-require 'pg'
+
 
 module Datasource
 
@@ -16,7 +16,7 @@ module Datasource
 
       # @return [String]
       def label
-        'Data from WOD data in a postgresql query at fiz-karlsruhe.de'
+        'Data from Web of Science data in a postgresql query at fiz-karlsruhe.de'
       end
 
       # @return [Boolean]
@@ -55,6 +55,7 @@ module Datasource
       def lookup(item) end
 
       def connect
+        require 'pg'
         @con = PG.connect(host: ENV['KB_HOST'],
                           dbname: ENV['KB_DB'],
                           port: ENV['KB_PORT'],

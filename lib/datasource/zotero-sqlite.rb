@@ -1,6 +1,4 @@
 # frozen_string_literal: true
-
-require 'sqlite3'
 require 'date'
 
 module Datasource
@@ -51,6 +49,7 @@ module Datasource
       end
 
       def connect
+        require 'sqlite3'
         return unless @db.nil?
 
         @db_path = ENV['ZOTERO_SQLITE_PATH']

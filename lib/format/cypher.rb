@@ -51,7 +51,7 @@ module Format
           <<~CYPHER
             MERGE (#{a_var}:Author {family: #{JSON.dump family}, given:#{JSON.dump given}})
               ON CREATE SET
-                #{a_var}.display_name = #{JSON.dump(given.to_s.empty? ? given : "#{family}, #{given}")}
+                #{a_var}.display_name = #{JSON.dump((creator.to_s)&.downcase)}
             MERGE (#{a_var})-[:CREATOR_OF]->(w)
         CYPHER
         )

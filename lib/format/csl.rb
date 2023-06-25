@@ -195,7 +195,7 @@ module Format
       end
 
       def to_s
-        family_and_given.join(', ')
+        given.to_s.empty? ? family : family_and_given.join(', ')
       end
 
       def initial
