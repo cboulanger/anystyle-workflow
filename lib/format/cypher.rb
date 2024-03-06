@@ -9,9 +9,9 @@ module Format
 
     def self.header
       [
-        'CREATE CONSTRAINT work_id IF NOT EXISTS ON (w:Work) ASSERT w.id IS UNIQUE;',
-        'CREATE CONSTRAINT institution_name IF NOT EXISTS ON (i:Institution) ASSERT i.name IS UNIQUE',
-        'CREATE CONSTRAINT venue_id IF NOT EXISTS ON (v:Venue) ASSERT v.id IS UNIQUE',
+        'CREATE CONSTRAINT work_id IF NOT EXISTS FOR (w:Work) REQUIRE w.id IS UNIQUE;',
+        'CREATE CONSTRAINT institution_name IF NOT EXISTS FOR (i:Institution) REQUIRE i.name IS UNIQUE;',
+        'CREATE CONSTRAINT venue_id IF NOT EXISTS FOR (v:Venue) REQUIRE v.id IS UNIQUE',
         'CREATE INDEX work_title IF NOT EXISTS FOR (w:Work) ON (w.title)',
         'CREATE INDEX venue_name IF NOT EXISTS FOR (v:Venue) ON (v.name)',
         'CREATE INDEX author_display_name IF NOT EXISTS FOR (a:Author) ON (a.display_name)'
