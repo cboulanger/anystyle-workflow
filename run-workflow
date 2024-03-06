@@ -96,6 +96,9 @@ HELP = \
        --verbose                          Output additional information
        --debug                            Output debug information
        --clean                            Clean output directories before running command
+
+  convert [options] <path/to/fie>
+        --to-csl <path/to/csl-file>       Convert input file to csl-json file at the given path
 TEXT
 
 puts HELP if ARGV.include?('--help') || ARGV.empty?
@@ -432,4 +435,43 @@ if ARGV.include? 'export-dataset'
                                 encoding:)
   dataset.export(exporter, limit:, preprocess:, postprocess:)
 
+end
+
+# ############################################################################################################
+# convert
+# ############################################################################################################
+
+if ARGV.include? 'convert'
+  ds = Wapiti::Dataset.new
+  as = Datamining::AnyStyle.new(use_default_models:true)
+
+  # input file tpyes
+  arg_name = '--from-xml'
+  if ARGV.include? arg_name
+    input_path = ARGV[(ARGV.index(arg_name) + 1)]
+    if File.file? input_path
+      files = [input_path]
+    elsif File.directory? input_path
+      files = Dir.children(input_path)
+    else
+      raise 'Invalid input path'
+    end
+    files.each do |file|
+      xml = File.read(File.join(input_path, file), encoding:'utf-8')
+      ds += as.xml_to_wapiti(xml)
+    end
+  end
+
+  raise "No input given" if ds.nil?
+
+  # output file types
+  arg_name = '--to-csl'
+  if ARGV.include? arg_name
+    output_path = ARGV[(ARGV.index(arg_name) + 1)]
+    items = as.wapiti_to_csl(ds)
+    csl_json = JSON.pretty_generate(items)
+    File.write(output_path, csl_json, encoding:'utf-8')
+  else
+    raise "Invalid export format."
+  end
 end
