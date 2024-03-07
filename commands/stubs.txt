@@ -1,0 +1,140 @@
+# any_style_workflow_cli.rb
+require 'gli'
+
+module AnyStyleWorkflowCLI
+  extend GLI::App
+
+  program_desc 'Utility commands for AnyStyle workflow'
+
+  desc 'Extract data'
+  command :extract do |c|
+    c.desc 'Path to model directory'
+    c.flag [:model_dir], type: String
+
+    c.desc 'Write all intermediary files for inspection purposes'
+    c.switch [:write_files], negatable: false
+
+    c.desc 'Overwrite output files with existing gold files to improve quality'
+    c.switch [:overwrite], negatable: false
+
+    c.desc 'Use gold files to improve quality'
+    c.flag ['use-parser-gold-from', 'use-finder-gold-from'], type: String
+
+    c.desc 'Use either text or pdf as source - must be last argument'
+    c.flag ['from-text', 'from-pdf'], type: String, required: true
+
+    c.desc 'Prefix for all output files, can be a directory, and/or a file prefix'
+    c.flag [:prefix], type: String
+
+    c.desc 'Maximum number of entries - for testing'
+    c.flag [:limit], type: Integer
+  end
+
+  desc 'Generate a CSV file with data on the extraction results and other available metadata'
+  command :stats do |c|
+    c.desc 'Path to the directory containing the AnyStyle CSL-JSON files'
+    c.flag [:input_dir], type: String
+
+    c.desc 'Path to a file containing all ids (DOIs) as a newline-separated list'
+    c.flag [:id_file], type: String
+
+    c.desc 'Optional path to the directory containing the fulltext files'
+    c.flag [:fulltext_dir], type: String
+
+    c.desc 'Add values from the dataset with that name'
+    c.flag [:dataset], type: String
+
+    c.action do |global_options, options, args|
+      type = args.first # Assuming first arg is <type>
+      # Command logic here
+    end
+  end
+
+  desc 'Check data quality'
+  command :check do |c|
+    c.desc 'Include default checks'
+    c.switch [:include_default], negatable: false
+
+    c.desc 'Add missing end-of-line spaces'
+    c.switch [:fix], negatable: false
+
+    c.desc 'Write the re-labelled gold files to its output folder'
+    c.switch [:write_files], negatable: false
+
+    c.desc 'Check only the given model, both if omitted'
+    c.switch [:parser, :finder], negatable: false
+
+    c.desc 'Path to the dir containing the gold to be checked, must be last argument'
+    c.flag [:gold_dir], type: String
+
+    c.desc 'Maximum number of files processed - for testing'
+    c.flag [:limit], type: Integer
+  end
+
+  desc 'Generates a dataset with the given name'
+  command :generate_dataset do |c|
+    c.argument_name 'name'
+    c.desc 'Path to the directory containing the AnyStyle CSL-JSON files'
+    c.flag [:input_dir], type: String
+
+    c.desc 'Path to a file containing all ids (DOIs) as a newline-separated list'
+    c.flag [:id_file], type: String
+
+    c.desc 'Path to the directory containing the fulltext files, needed for auto-generation'
+    c.flag [:fulltext_dir], type: String
+
+    c.desc 'Reconcile the citation data with external datasources'
+    c.switch [:reconcile], negatable: false
+
+    c.desc 'Path to a file containing lines of strings or regex which will be removed from the fulltext'
+    c.flag [:stopword_file], type: String
+
+    c.desc 'Author string or regexp causing the author to be ignored'
+    c.flag [:ignore_author], type: String
+
+    c.desc 'Affiliation string or regexp causing the affiliation to be ignored'
+    c.flag [:ignore_affiliation], type: String
+
+    c.desc 'Only include works from this period'
+    c.flag [:period], type: String
+
+    c.desc 'Maximum number of files processed - for testing'
+    c.flag [:limit], type: Integer
+
+    c.desc 'Reset the cache to regenerate all dataset items'
+    c.switch [:reset_cache], negatable: false
+  end
+
+desc 'Exports the dataset with the given name'
+arg_name 'name'
+command :export_dataset do |c|
+  c.desc 'Export in the given format. Check the lib/export folder for supported formats'
+  c.flag [:format], type: String, required: true
+
+  c.desc 'Export target, can be a file path or a database name, depending on exporter'
+  c.flag [:target], type: String, required: true
+
+  c.desc 'Do not remove empty fields (if required by importer)'
+  c.switch [:no_compact], negatable: false
+
+  c.desc 'Make the output more human-readable (via indentation, comments, etc.)'
+  c.switch [:pretty], negatable: false
+
+  c.desc 'The encoding of the output file (defaults to utf-8)'
+  c.flag [:encoding], type: String
+
+  c.desc 'Maximum number of entries - for testing'
+  c.flag [:limit], type: Integer, default_value: 10
+
+  c.desc 'A pre/postprocessing instruction in the form of "type:instruction" or a path to a file containing such instructions'
+  c.flag [:preprocess], type: String
+
+  c.desc 'A postprocessing instruction or a path to a file containing such instructions'
+  c.flag [:postprocess], type: String
+
+  c.action do |global_options, options, args|
+    name = args.first # The dataset name provided as the first argument
+    # Command logic to export the dataset goes here
+  end
+end
+

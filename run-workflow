@@ -97,8 +97,6 @@ HELP = \
        --debug                            Output debug information
        --clean                            Clean output directories before running command
 
-  convert [options] <path/to/fie>
-        --to-csl <path/to/csl-file>       Convert input file to csl-json file at the given path
 TEXT
 
 puts HELP if ARGV.include?('--help') || ARGV.empty?

@@ -7,6 +7,27 @@ module AnyStyleWorkflowCLI
   extend GLI::App
   program_desc 'AnyStyle reference extraction workflow'
 
+  # Global option for verbose output
+  switch [:verbose], desc: 'Output additional information', negatable: false
+
+  # Global option for debug output
+  switch [:debug], desc: 'Output debug information', negatable: false
+
+  # Global option to clean output directories before running a command
+  switch [:clean], desc: 'Clean output directories before running command', negatable: false
+
+  # You can also use the `pre` block to perform actions based on global options before any command executes
+  pre do |global, command, options, args|
+    # Example: Output a message if verbose mode is enabled
+    if global[:verbose]
+      puts "Running in verbose mode..."
+    end
+
+    # Return true to continue executing the command, false to stop
+    true
+  end
+
+  # Similarly, a `post` block could be used to perform actions after command execution
 
   # auto-register commands
   Dir[File.join(__dir__, 'commands', '*.rb')].each { |file| require file }
