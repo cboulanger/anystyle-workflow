@@ -120,6 +120,7 @@ module Datamining
     # This isn't working - need to file an issue
     # @param [String] file_path
     def doc_to_xml(file_path)
+      raise 'not implemented because of wapiti bug'
       #::AnyStyle.finder.find(file_path, format: :wapiti)[0].to_xml()
     end
 
@@ -165,18 +166,39 @@ module Datamining
         # we don't need "scripts" info, it's not CSL-JSON compliant anyways
         item.delete(:scripts)
 
-        # fix missing/incorrect types
-        item[:type] = 'book' if item[:type].nil? && (item[:issued] && !item[:'container-title'])
-        if item[:editor] || item[:'publisher-place'] || item[:publisher] || item[:edition]
-          item[:type] = if item[:'container-title'] || item[:author]
-                          'chapter'
-                        else
-                          'book'
-                        end
+        # rename non-csl fields as extensions
+        [:signal, :note, :backref].each do |symb|
+          unless item[symb].nil?
+            item[('x-' + symb.to_s).to_sym] = item.delete(symb)
+          end
         end
+
+        # fix date fields
+        [:accessed, :issued].each do |date_field|
+          item[date_field] = { 'raw': item[date_field] } unless item[date_field].nil?
+        end
+
+        # fix missing/incorrect types
+
+        # Assign 'book' if type is missing and specific conditions are met
+        if item[:type].nil?
+          item[:type] = 'book' if (item[:issued] && !item[:'container-title']) || item[:'collection-title']
+        end
+
+        # Assign 'chapter' or 'book' based on the presence of certain keys
+        if item[:editor] || item[:'publisher-place'] || item[:publisher] || item[:edition]
+          item[:type] = (item[:'container-title'] || (item[:author] && item[:editor])) ? 'chapter' : 'book'
+        end
+
+        # fallback type
         item[:type] = 'document' if item[:type].nil?
 
-        # fix backreferences: Ders., Dies.,
+        # page info is a locator unless container-title is given
+        if item[:'container-title'].nil? && item[:page]
+          item[:'x-locator'] = item.delete(:page)
+        end
+
+        # add backreferences in name fields: Ders., Dies.,
         [:author, :editor].each do |key|
           unless (creator = item[key]&.first).nil?
             family = creator[:family].to_s.strip
@@ -189,7 +211,7 @@ module Datamining
             end
             name = [family,given,literal].reject { |n| n.empty? }.first
             if name
-              if last_creator[key] && name.downcase.match(/^(ders\.?|dies\.?|\p{Pd})$/)
+              if last_creator[key] && name.downcase.match(/^([Dd]ers\.?|[Dd]ies\.?|\p{Pd})$/)
                 item[key][0] = last_creator[key]
                 puts "   - Replaced #{key.to_s} '#{name}' with '#{last_creator[key]}'" if @verbose
               else
@@ -198,6 +220,8 @@ module Datamining
             end
           end
         end
+
+        # return item
         item
       end
     end

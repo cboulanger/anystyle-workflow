@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+
+require 'gli'
+require_relative 'lib/bootstrap'
+
+module AnyStyleWorkflowCLI
+  extend GLI::App
+  program_desc 'AnyStyle reference extraction workflow'
+
+
+  # auto-register commands
+  Dir[File.join(__dir__, 'commands', '*.rb')].each { |file| require file }
+end
+
+AnyStyleWorkflowCLI.run(ARGV)
